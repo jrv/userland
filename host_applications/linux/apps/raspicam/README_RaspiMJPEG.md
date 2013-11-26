@@ -5,7 +5,8 @@ Usage as MJPEG-Streamer:
 raspimjpeg -w 640 -h 480 -d 2 -q 70 -of /path/to/image.jpg
 
 This command creates the image "path/to/image.jpg" with the size 320x240 px and updates it every time, 5 frames are captured, which gives (30/5=) 6fps. The image dimensions need to be even, the jpg-quality is set with -q. This way used, RaspiMJPEG serves as MJPEG-streamer and the preview can be showed on a website for example. To achieve a high update-rate (e.g. "-d 1"), it is recommended to save the file into the ram and not on the sd-card (e.g. "-of /dev/shm/image.jpg").
-If -w, -h and -d are not set, the default setting is used (320x240, 6fps, quality 85). 
+If -w, -h and -d are not set, the default setting is used (320x240, 6fps, quality 85).
+This way used, RaspiMJPEG can also record a timelapse with many frames per second, if the -of parameter is set as /pat/to/image%04d.jpg.
 
 
 Usages as MJPEG-Streamer with video capture:
