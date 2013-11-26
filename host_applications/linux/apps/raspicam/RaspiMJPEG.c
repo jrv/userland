@@ -1,7 +1,7 @@
 /*
 Copyright (c) 2013, Broadcom Europe Ltd
-Copyright (c) 2013, James Hughes
 Copyright (c) 2013, Silvan Melchior
+Copyright (c) 2013, James Hughes
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,13 +38,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Description
  *
  * RaspiMJPEG is an OpenMAX-Application based on the mmal-library, which is
- * comparable to and inspired by RaspiVid. Both applications save the recording
- * formated as H264 into a file. But instead of showing the preview on a screen,
- * RaspiMJPEG streams the preview as MJPEG into a file. The update-rate and the
- * size of the preview are customizable with parameters and independent of the
- * recording, which is always 1080p 30fps. Once started, the application receives
+ * comparable to and inspired by RaspiVid and RaspiStill. RaspiMJPEG can record
+ * 1080p 30fps videos and 5 Mpx images into a file. But instead of showing the
+ * preview on a screen, RaspiMJPEG streams the preview as MJPEG into a file.
+ * The update-rate and the size of the preview are customizable with parameters
+ * and independent of the image/video. Once started, the application receives
  * commands with a unix-pipe and showes its status on stdout and writes it into
- * a status-file.
+ * a status-file. The program terminates itself after receiving a SIGINT or
+ * SIGTERM.
  *
  * Usage information in README_RaspiMJPEG.md
  */
@@ -67,10 +68,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "interface/mmal/util/mmal_default_components.h"
 #include "interface/mmal/util/mmal_connection.h"
 
-FILE *jpegoutput_file = NULL, *h264output_file = NULL, *status_file = NULL;
-MMAL_POOL_T *pool_jpegencoder, *pool_h264encoder;
-unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, running=1, quality=85;
-char *jpeg_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
+FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
+MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
+unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, running=1, quality=85, image_cnt = 0;
+char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
 
 
 void error (const char *string) {
@@ -144,6 +145,41 @@ static void jpegencoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
 
 }
 
+static void jpegencoder2_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
+
+  int bytes_written = buffer->length;
+
+  if(buffer->length) {
+    mmal_buffer_header_mem_lock(buffer);
+    bytes_written = fwrite(buffer->data, 1, buffer->length, jpegoutput2_file);
+    mmal_buffer_header_mem_unlock(buffer);
+  }
+  if(bytes_written != buffer->length) error("Could not write all bytes");
+  
+  if(buffer->flags & MMAL_BUFFER_HEADER_FLAG_FRAME_END) {
+    fclose(jpegoutput2_file);
+    if(status_filename != 0) {
+      status_file = fopen(status_filename, "w");
+      fprintf(status_file, "ready");
+      fclose(status_file);
+    }
+    image_cnt++;
+  }
+
+  mmal_buffer_header_release(buffer);
+
+  if (port->is_enabled) {
+    MMAL_STATUS_T status = MMAL_SUCCESS;
+    MMAL_BUFFER_HEADER_T *new_buffer;
+
+    new_buffer = mmal_queue_get(pool_jpegencoder2->queue);
+
+    if (new_buffer) status = mmal_port_send_buffer(port, new_buffer);
+    if (!new_buffer || status != MMAL_SUCCESS) error("Could not send buffers to port");
+  }
+
+}
+
 static void h264encoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)  {
 
   int bytes_written = buffer->length;
@@ -172,11 +208,12 @@ static void h264encoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
 int main (int argc, char* argv[]) {
 
   MMAL_STATUS_T status;
-  MMAL_COMPONENT_T *camera = 0, *jpegencoder = 0, *h264encoder = 0, *resizer = 0;
+  MMAL_COMPONENT_T *camera = 0, *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder = 0, *resizer = 0;
   MMAL_ES_FORMAT_T *format;
-  MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264;
+  MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
   int max, i, fd, length;
   char readbuf[10];
+  char *filename_temp;
 
   bcm_host_init();
   
@@ -206,6 +243,11 @@ int main (int argc, char* argv[]) {
       jpeg_filename = argv[i];
       of_set = 1;
     }
+    else if(strcmp(argv[i], "-if") == 0) {
+      i++;
+      jpeg2_filename = argv[i];
+      of_set = 1;
+    }
     else if(strcmp(argv[i], "-cf") == 0) {
       i++;
       pipe_filename = argv[i];
@@ -232,10 +274,10 @@ int main (int argc, char* argv[]) {
 
   MMAL_PARAMETER_CAMERA_CONFIG_T cam_config = {
     {MMAL_PARAMETER_CAMERA_CONFIG, sizeof(cam_config)},
-    .max_stills_w = 1920,
-    .max_stills_h = 1080,
+    .max_stills_w = 2592,
+    .max_stills_h = 1944,
     .stills_yuv422 = 0,
-    .one_shot_stills = 0,
+    .one_shot_stills = 1,
     .max_preview_video_w = 1920,
     .max_preview_video_h = 1080,
     .num_preview_video_frames = 3,
@@ -275,13 +317,12 @@ int main (int argc, char* argv[]) {
   
   format = camera->output[2]->format;
   format->encoding = MMAL_ENCODING_OPAQUE;
-  format->encoding_variant = MMAL_ENCODING_I420;
-  format->es->video.width = 1920;
-  format->es->video.height = 1080;
+  format->es->video.width = 2592;
+  format->es->video.height = 1944;
   format->es->video.crop.x = 0;
   format->es->video.crop.y = 0;
-  format->es->video.crop.width = 1920;
-  format->es->video.crop.height = 1080;
+  format->es->video.crop.width = 2592;
+  format->es->video.crop.height = 1944;
   format->es->video.frame_rate.num = 1;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[2]);
@@ -315,6 +356,30 @@ int main (int argc, char* argv[]) {
   if(status != MMAL_SUCCESS) error("Could not enable image encoder");
   pool_jpegencoder = mmal_port_pool_create(jpegencoder->output[0], jpegencoder->output[0]->buffer_num, jpegencoder->output[0]->buffer_size);
   if(!pool_jpegencoder) error("Could not create image buffer pool");
+
+  //
+  // create second jpeg-encoder
+  //
+  status = mmal_component_create(MMAL_COMPONENT_DEFAULT_IMAGE_ENCODER, &jpegencoder2);
+  if(status != MMAL_SUCCESS && status != MMAL_ENOSYS) error("Could not create image encoder 2");
+
+  mmal_format_copy(jpegencoder2->output[0]->format, jpegencoder2->input[0]->format);
+  jpegencoder2->output[0]->format->encoding = MMAL_ENCODING_JPEG;
+  jpegencoder2->output[0]->buffer_size = jpegencoder2->output[0]->buffer_size_recommended;
+  if(jpegencoder2->output[0]->buffer_size < jpegencoder2->output[0]->buffer_size_min)
+    jpegencoder2->output[0]->buffer_size = jpegencoder2->output[0]->buffer_size_min;
+  jpegencoder2->output[0]->buffer_num = jpegencoder2->output[0]->buffer_num_recommended;
+  if(jpegencoder2->output[0]->buffer_num < jpegencoder2->output[0]->buffer_num_min)
+    jpegencoder2->output[0]->buffer_num = jpegencoder2->output[0]->buffer_num_min;
+  status = mmal_port_format_commit(jpegencoder2->output[0]);
+  if(status != MMAL_SUCCESS) error("Could not set image format 2");
+  status = mmal_port_parameter_set_uint32(jpegencoder2->output[0], MMAL_PARAMETER_JPEG_Q_FACTOR, 85);
+  if(status != MMAL_SUCCESS) error("Could not set jpeg quality 2");
+
+  status = mmal_component_enable(jpegencoder2);
+  if(status != MMAL_SUCCESS) error("Could not enable image encoder 2");
+  pool_jpegencoder2 = mmal_port_pool_create(jpegencoder2->output[0], jpegencoder2->output[0]->buffer_num, jpegencoder2->output[0]->buffer_size);
+  if(!pool_jpegencoder2) error("Could not create image buffer pool 2");
 
   //
   // create h264-encoder
@@ -401,6 +466,22 @@ int main (int argc, char* argv[]) {
     if(status != MMAL_SUCCESS) error("Could not send buffers to jpeg port");
   }
 
+  status = mmal_connection_create(&con_cam_jpeg, camera->output[2], jpegencoder2->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+  if(status != MMAL_SUCCESS) error("Could not create connection camera -> encoder");
+  status = mmal_connection_enable(con_cam_jpeg);
+  if(status != MMAL_SUCCESS) error("Could not enable connection camera -> encoder");
+
+  status = mmal_port_enable(jpegencoder2->output[0], jpegencoder2_buffer_callback);
+  if(status != MMAL_SUCCESS) error("Could not enable jpeg port 2");
+  max = mmal_queue_length(pool_jpegencoder2->queue);
+  for(i=0;i<max;i++) {
+    MMAL_BUFFER_HEADER_T *jpegbuffer2 = mmal_queue_get(pool_jpegencoder2->queue);
+
+    if(!jpegbuffer2) error("Could not create jpeg buffer header 2");
+    status = mmal_port_send_buffer(jpegencoder2->output[0], jpegbuffer2);
+    if(status != MMAL_SUCCESS) error("Could not send buffers to jpeg port 2");
+  }
+
   //
   // run
   //
@@ -456,7 +537,7 @@ int main (int argc, char* argv[]) {
             printf("Capturing started\n");
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
-              fprintf(status_file, "capture");
+              fprintf(status_file, "video");
               fclose(status_file);
             }
           }
@@ -479,6 +560,19 @@ int main (int argc, char* argv[]) {
               fprintf(status_file, "ready");
               fclose(status_file);
             }
+          }
+        }
+        else if((readbuf[0]=='i') && (readbuf[1]=='m')) {
+          asprintf(&filename_temp, jpeg2_filename, image_cnt);
+          jpegoutput2_file = fopen(filename_temp, "wb");
+          if(!jpegoutput2_file) error("Could not open/create image-file");
+          status = mmal_port_parameter_set_boolean(camera->output[2], MMAL_PARAMETER_CAPTURE, 1);
+          if(status != MMAL_SUCCESS) error("Could not start image capture");
+          printf("Capturing image\n");
+          if(status_filename != 0) {
+            status_file = fopen(status_filename, "w");
+            fprintf(status_file, "image");
+            fclose(status_file);
           }
         }
       }
