@@ -69,7 +69,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 FILE *jpegoutput_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_h264encoder;
-unsigned int mjpeg_cnt=0, width=480, height=270, divider=5, running = 1;
+unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, running=1, quality=85;
 char *jpeg_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
 
 
@@ -183,6 +183,7 @@ int main (int argc, char* argv[]) {
   //
   // read arguments
   //
+  unsigned char of_set = 0;
   for(i=1; i<argc; i++) {
     if(strcmp(argv[i], "-w") == 0) {
       i++;
@@ -192,6 +193,10 @@ int main (int argc, char* argv[]) {
       i++;
       height = atoi(argv[i]);
     }
+    else if(strcmp(argv[i], "-q") == 0) {
+      i++;
+      quality = atoi(argv[i]);
+    }
     else if(strcmp(argv[i], "-d") == 0) {
       i++;
       divider = atoi(argv[i]);
@@ -199,6 +204,7 @@ int main (int argc, char* argv[]) {
     else if(strcmp(argv[i], "-of") == 0) {
       i++;
       jpeg_filename = argv[i];
+      of_set = 1;
     }
     else if(strcmp(argv[i], "-cf") == 0) {
       i++;
@@ -214,6 +220,7 @@ int main (int argc, char* argv[]) {
     }
     else error("Invalid arguments");
   }
+  if(!of_set) error("Output file not specified");
 
   //
   // create camera
@@ -301,7 +308,7 @@ int main (int argc, char* argv[]) {
     jpegencoder->output[0]->buffer_num = jpegencoder->output[0]->buffer_num_min;
   status = mmal_port_format_commit(jpegencoder->output[0]);
   if(status != MMAL_SUCCESS) error("Could not set image format");
-  status = mmal_port_parameter_set_uint32(jpegencoder->output[0], MMAL_PARAMETER_JPEG_Q_FACTOR, 85);
+  status = mmal_port_parameter_set_uint32(jpegencoder->output[0], MMAL_PARAMETER_JPEG_Q_FACTOR, quality);
   if(status != MMAL_SUCCESS) error("Could not set jpeg quality");
 
   status = mmal_component_enable(jpegencoder);
