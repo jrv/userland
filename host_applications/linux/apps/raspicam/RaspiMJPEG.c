@@ -70,7 +70,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
-unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, running=1, quality=85, image_cnt = 0;
+unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, running=1, quality=85, image_cnt = 0, image2_cnt = 0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
 
 
@@ -104,11 +104,12 @@ static void camera_control_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *bu
 static void jpegencoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
 
   int bytes_written = buffer->length;
-  char *filename_temp;
+  char *filename_temp, *filename_temp2;
 
   if(mjpeg_cnt == 0) {
     if(!jpegoutput_file) {
-      asprintf(&filename_temp, "%s.part", jpeg_filename);
+      asprintf(&filename_temp, jpeg_filename, image_cnt);
+      asprintf(&filename_temp2, "%s.part", filename_temp);
       jpegoutput_file = fopen(filename_temp, "wb");
       if(!jpegoutput_file) error("Could not open mjpeg-destination");
     }
@@ -125,8 +126,10 @@ static void jpegencoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
     if(mjpeg_cnt == divider) {
       fclose(jpegoutput_file);
       jpegoutput_file = NULL;
-      asprintf(&filename_temp, "%s.part", jpeg_filename);
-      rename(filename_temp, jpeg_filename);
+      asprintf(&filename_temp, jpeg_filename, image_cnt);
+      asprintf(&filename_temp2, "%s.part", filename_temp);
+      rename(filename_temp2, filename_temp);
+      image_cnt++;
       mjpeg_cnt = 0;
     }
   }
@@ -163,7 +166,7 @@ static void jpegencoder2_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_
       fprintf(status_file, "ready");
       fclose(status_file);
     }
-    image_cnt++;
+    image2_cnt++;
   }
 
   mmal_buffer_header_release(buffer);
@@ -563,7 +566,7 @@ int main (int argc, char* argv[]) {
           }
         }
         else if((readbuf[0]=='i') && (readbuf[1]=='m')) {
-          asprintf(&filename_temp, jpeg2_filename, image_cnt);
+          asprintf(&filename_temp, jpeg2_filename, image2_cnt);
           jpegoutput2_file = fopen(filename_temp, "wb");
           if(!jpegoutput2_file) error("Could not open/create image-file");
           status = mmal_port_parameter_set_boolean(camera->output[2], MMAL_PARAMETER_CAPTURE, 1);
