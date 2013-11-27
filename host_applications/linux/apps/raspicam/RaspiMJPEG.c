@@ -110,7 +110,7 @@ static void jpegencoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
     if(!jpegoutput_file) {
       asprintf(&filename_temp, jpeg_filename, image_cnt);
       asprintf(&filename_temp2, "%s.part", filename_temp);
-      jpegoutput_file = fopen(filename_temp, "wb");
+      jpegoutput_file = fopen(filename_temp2, "wb");
       if(!jpegoutput_file) error("Could not open mjpeg-destination");
     }
     if(buffer->length) {
