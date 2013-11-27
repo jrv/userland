@@ -70,7 +70,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
-unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, running=1, quality=85, image_cnt = 0, image2_cnt = 0;
+unsigned int mjpeg_cnt=0, width=320, height=180, divider=5, running=1, quality=85, image_cnt = 0, image2_cnt = 0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
 
 
