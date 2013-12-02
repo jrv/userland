@@ -50,7 +50,7 @@ sh    set sharpness (range: [-100;100]; default: 0)
 co    set contrast (range: [-100;100]; default: 0)
 br    set brightness (range: [0;100]; default: 50)
 sa    set saturation (range: [-100;100]; default: 0)
-is    set ISO (range: [100;800]; default: ?)
+is    set ISO (range: [100;800]; default: 0=auto)
 vs 1  torn on video stabilisation
 vs 0  torn off video stabilisation
 ec    set exposure compensation (range: [-10;10]; default: 0)
@@ -58,4 +58,4 @@ em    set exposure mode (range: [off/auto/night/nightpreview/backlight/spotlight
 wb    set white balance (range: [off/auto/sun/cloudy/shade/tungsten/fluorescent/incandescent/flash/horizon]; default: auto)
 ro    set rotation (range: [0/90/180/270]; default: 0)
 qu    set output image quality (range: [0;100]; default: 85)
-bi    set output video bitrate (range: [?]; default: 17000000)
+bi    set output video bitrate (range: [0;25000000]; default: 17000000)
