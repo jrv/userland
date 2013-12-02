@@ -70,9 +70,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
-unsigned int mjpeg_cnt=0, width=320, height=180, divider=5, running=1, quality=85, image_cnt = 0, image2_cnt = 0;
+unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
-
+unsigned char mp4box=0, running=1, quality=85;
 
 void error (const char *string) {
 
@@ -214,9 +214,10 @@ int main (int argc, char* argv[]) {
   MMAL_COMPONENT_T *camera = 0, *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder = 0, *resizer = 0;
   MMAL_ES_FORMAT_T *format;
   MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
-  int max, i, fd, length;
-  char readbuf[10];
-  char *filename_temp;
+  int max, i, fd, length, cam_setting;
+  unsigned long int cam_setting_long;
+  char readbuf[20];
+  char *filename_temp, *cmd_temp;
 
   bcm_host_init();
   
@@ -240,6 +241,17 @@ int main (int argc, char* argv[]) {
     else if(strcmp(argv[i], "-d") == 0) {
       i++;
       divider = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-p") == 0) {
+      mp4box = 1;
+    }
+    else if(strcmp(argv[i], "-ic") == 0) {
+      i++;
+      image2_cnt = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-vc") == 0) {
+      i++;
+      video_cnt = atoi(argv[i]);
     }
     else if(strcmp(argv[i], "-of") == 0) {
       i++;
@@ -510,7 +522,7 @@ int main (int argc, char* argv[]) {
       fd = open(pipe_filename, O_RDONLY | O_NONBLOCK);
       if(fd < 0) error("Could not open PIPE");
       fcntl(fd, F_SETFL, 0);
-      length = read(fd, readbuf, 10);
+      length = read(fd, readbuf, 20);
       close(fd);
 
       if(length) {
@@ -524,7 +536,11 @@ int main (int argc, char* argv[]) {
             if(status != MMAL_SUCCESS) error("Could not create connecton camera -> video converter");
             status = mmal_connection_enable(con_cam_h264);
             if(status != MMAL_SUCCESS) error("Could not enable connection camera -> video converter");
-            h264output_file = fopen(h264_filename, "wb");
+            asprintf(&filename_temp, h264_filename, video_cnt);
+            if(mp4box) {
+              asprintf(&filename_temp, "%s.h264", filename_temp);
+            }
+            h264output_file = fopen(filename_temp, "wb");
             if(!h264output_file) error("Could not open/create video-file");
             status = mmal_port_enable(h264encoder->output[0], h264encoder_buffer_callback);
             if(status != MMAL_SUCCESS) error("Could not enable video port");
@@ -558,6 +574,19 @@ int main (int argc, char* argv[]) {
             fclose(h264output_file);
             h264output_file = NULL;
             printf("Capturing stopped\n");
+            if(mp4box) {
+              printf("Boxing started\n");
+              status_file = fopen(status_filename, "w");
+              fprintf(status_file, "boxing");
+              fclose(status_file);
+              asprintf(&filename_temp, h264_filename, video_cnt);
+              asprintf(&cmd_temp, "MP4Box -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
+              if(system(cmd_temp) == -1) error("Could not start MP4Box");
+              asprintf(&filename_temp, "%s.h264", filename_temp);
+              remove(filename_temp);
+              printf("Boxing stopped\n");
+            }
+            video_cnt++;
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
               fprintf(status_file, "ready");
@@ -577,6 +606,149 @@ int main (int argc, char* argv[]) {
             fprintf(status_file, "image");
             fclose(status_file);
           }
+        }
+        else if((readbuf[0]=='s') && (readbuf[1]=='h')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          MMAL_RATIONAL_T value = {cam_setting, 100};
+          status = mmal_port_parameter_set_rational(camera->control, MMAL_PARAMETER_SHARPNESS, value);
+          if(status != MMAL_SUCCESS) error("Could not set sharpness");
+          printf("Sharpness: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='c') && (readbuf[1]=='o')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          MMAL_RATIONAL_T value = {cam_setting, 100};
+          status = mmal_port_parameter_set_rational(camera->control, MMAL_PARAMETER_CONTRAST, value);
+          if(status != MMAL_SUCCESS) error("Could not set contrast");
+          printf("Contrast: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='b') && (readbuf[1]=='r')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          MMAL_RATIONAL_T value = {cam_setting, 100};
+          status = mmal_port_parameter_set_rational(camera->control, MMAL_PARAMETER_BRIGHTNESS, value);
+          if(status != MMAL_SUCCESS) error("Could not set brightness");
+          printf("Brightness: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='s') && (readbuf[1]=='a')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          MMAL_RATIONAL_T value = {cam_setting, 100};
+          status = mmal_port_parameter_set_rational(camera->control, MMAL_PARAMETER_SATURATION, value);
+          if(status != MMAL_SUCCESS) error("Could not set saturation");
+          printf("Saturation: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='i') && (readbuf[1]=='s')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          status = mmal_port_parameter_set_uint32(camera->control, MMAL_PARAMETER_ISO, cam_setting);
+          if(status != MMAL_SUCCESS) error("Could not set ISO");
+          printf("ISO: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='v') && (readbuf[1]=='s')) {
+          if(readbuf[3]=='1') {
+            status = mmal_port_parameter_set_boolean(camera->control, MMAL_PARAMETER_VIDEO_STABILISATION, 1);
+            printf("Video Stabilisation ON\n");
+          }
+          else {
+            status = mmal_port_parameter_set_boolean(camera->control, MMAL_PARAMETER_VIDEO_STABILISATION, 0);
+            printf("Video Stabilisation OFF\n");
+          }
+          if(status != MMAL_SUCCESS) error("Could not set video stabilisation");
+        }
+        else if((readbuf[0]=='e') && (readbuf[1]=='c')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          status = mmal_port_parameter_set_int32(camera->control, MMAL_PARAMETER_EXPOSURE_COMP, cam_setting);
+          if(status != MMAL_SUCCESS) error("Could not set exposure compensation");
+          printf("Exposure Compensation: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='e') && (readbuf[1]=='m')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          MMAL_PARAM_EXPOSUREMODE_T mode = MMAL_PARAM_EXPOSUREMODE_OFF;
+          if(strcmp(readbuf, "   auto") == 0) mode = MMAL_PARAM_EXPOSUREMODE_AUTO;
+          else if(strcmp(readbuf, "   night") == 0) mode = MMAL_PARAM_EXPOSUREMODE_NIGHT;
+          else if(strcmp(readbuf, "   nightpreview") == 0) mode = MMAL_PARAM_EXPOSUREMODE_NIGHTPREVIEW;
+          else if(strcmp(readbuf, "   backlight") == 0) mode = MMAL_PARAM_EXPOSUREMODE_BACKLIGHT;
+          else if(strcmp(readbuf, "   spotlight") == 0) mode = MMAL_PARAM_EXPOSUREMODE_SPOTLIGHT;
+          else if(strcmp(readbuf, "   sports") == 0) mode = MMAL_PARAM_EXPOSUREMODE_SPORTS;
+          else if(strcmp(readbuf, "   snow") == 0) mode = MMAL_PARAM_EXPOSUREMODE_SNOW;
+          else if(strcmp(readbuf, "   beach") == 0) mode = MMAL_PARAM_EXPOSUREMODE_BEACH;
+          else if(strcmp(readbuf, "   verylong") == 0) mode = MMAL_PARAM_EXPOSUREMODE_VERYLONG;
+          else if(strcmp(readbuf, "   fixedfps") == 0) mode = MMAL_PARAM_EXPOSUREMODE_FIXEDFPS;
+          else if(strcmp(readbuf, "   antishake") == 0) mode = MMAL_PARAM_EXPOSUREMODE_ANTISHAKE;
+          else if(strcmp(readbuf, "   fireworks") == 0) mode = MMAL_PARAM_EXPOSUREMODE_FIREWORKS;
+          MMAL_PARAMETER_EXPOSUREMODE_T exp_mode = {{MMAL_PARAMETER_EXPOSURE_MODE,sizeof(exp_mode)}, mode};
+          status = mmal_port_parameter_set(camera->control, &exp_mode.hdr);
+          if(status != MMAL_SUCCESS) error("Could not set exposure mode");
+          printf("Exposure mode changed\n");
+        }
+        else if((readbuf[0]=='w') && (readbuf[1]=='b')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          MMAL_PARAM_AWBMODE_T awb_mode = MMAL_PARAM_AWBMODE_OFF;
+          if(strcmp(readbuf, "   auto") == 0) awb_mode = MMAL_PARAM_AWBMODE_AUTO;
+          else if(strcmp(readbuf, "   auto") == 0) awb_mode = MMAL_PARAM_AWBMODE_AUTO;
+          else if(strcmp(readbuf, "   sun") == 0) awb_mode = MMAL_PARAM_AWBMODE_SUNLIGHT;
+          else if(strcmp(readbuf, "   cloudy") == 0) awb_mode = MMAL_PARAM_AWBMODE_CLOUDY;
+          else if(strcmp(readbuf, "   shade") == 0) awb_mode = MMAL_PARAM_AWBMODE_SHADE;
+          else if(strcmp(readbuf, "   tungsten") == 0) awb_mode = MMAL_PARAM_AWBMODE_TUNGSTEN;
+          else if(strcmp(readbuf, "   fluorescent") == 0) awb_mode = MMAL_PARAM_AWBMODE_FLUORESCENT;
+          else if(strcmp(readbuf, "   incandescent") == 0) awb_mode = MMAL_PARAM_AWBMODE_INCANDESCENT;
+          else if(strcmp(readbuf, "   flash") == 0) awb_mode = MMAL_PARAM_AWBMODE_FLASH;
+          else if(strcmp(readbuf, "   horizon") == 0) awb_mode = MMAL_PARAM_AWBMODE_HORIZON;
+          MMAL_PARAMETER_AWBMODE_T param = {{MMAL_PARAMETER_AWB_MODE,sizeof(param)}, awb_mode};
+          status = mmal_port_parameter_set(camera->control, &param.hdr);
+          if(status != MMAL_SUCCESS) error("Could not set white balance");
+          printf("White balance changed\n");
+        }
+        else if((readbuf[0]=='r') && (readbuf[1]=='o')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          status = mmal_port_parameter_set_int32(camera->output[0], MMAL_PARAMETER_ROTATION, cam_setting);
+          if(status != MMAL_SUCCESS) error("Could not set rotation (0)");
+          status = mmal_port_parameter_set_int32(camera->output[1], MMAL_PARAMETER_ROTATION, cam_setting);
+          if(status != MMAL_SUCCESS) error("Could not set rotation (1)");
+          status = mmal_port_parameter_set_int32(camera->output[2], MMAL_PARAMETER_ROTATION, cam_setting);
+          if(status != MMAL_SUCCESS) error("Could not set rotation (2)");
+          printf("Rotation: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='q') && (readbuf[1]=='u')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting = atoi(readbuf);
+          status = mmal_port_parameter_set_uint32(jpegencoder2->output[0], MMAL_PARAMETER_JPEG_Q_FACTOR, cam_setting);
+          if(status != MMAL_SUCCESS) error("Could not set quality");
+          printf("Quality: %d\n", cam_setting);
+        }
+        else if((readbuf[0]=='b') && (readbuf[1]=='i')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          cam_setting_long = strtoull(readbuf, NULL, 0);
+          h264encoder->output[0]->format->bitrate = cam_setting_long;
+          status = mmal_port_format_commit(h264encoder->output[0]);
+          if(status != MMAL_SUCCESS) error("Could not set bitrate");
+          printf("Bitrate: %lu\n", cam_setting_long);
         }
       }
 
