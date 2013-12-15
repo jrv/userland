@@ -24,6 +24,7 @@ ready   --> MJPEG is streaming, not capturing
 video   --> MJPEG is streaming and video is capturing
 boxing  --> MJPEG is streaming and video is packed into mp4
 image   --> MJPEG is streaming and image is capturing
+halted  --> RaspiMJPEG is idle
 errror  --> An error occured and the application terminated
 
 
@@ -40,6 +41,7 @@ Possible parameters:
 -p    box the video-capture (h264) into a mp4 after capturing (needs gpac installed)
 -ic   set the offset for image output numbering
 -vc   set the offset for video output numbering
+-pa   start RaspiMJPEG in idle state
 
 
 Possible Pipe-Commands:
@@ -59,3 +61,5 @@ wb    set white balance (range: [off/auto/sun/cloudy/shade/tungsten/fluorescent/
 ro    set rotation (range: [0/90/180/270]; default: 0)
 qu    set output image quality (range: [0;100]; default: 85)
 bi    set output video bitrate (range: [0;25000000]; default: 17000000)
+ru 0  halt RaspiMJPEG and release camera
+ru 1  restart mjpeg-stream
