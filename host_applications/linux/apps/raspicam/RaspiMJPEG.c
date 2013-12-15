@@ -68,11 +68,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "interface/mmal/util/mmal_default_components.h"
 #include "interface/mmal/util/mmal_connection.h"
 
+MMAL_COMPONENT_T *camera = 0;
 FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
 unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
-unsigned char mp4box=0, running=1, quality=85;
+unsigned char mp4box=0, running=1, autostart=1, quality=85;
 
 void error (const char *string) {
 
@@ -208,80 +209,11 @@ static void h264encoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
 
 }
 
-int main (int argc, char* argv[]) {
+void create_camera (void) {
 
   MMAL_STATUS_T status;
-  MMAL_COMPONENT_T *camera = 0, *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder = 0, *resizer = 0;
   MMAL_ES_FORMAT_T *format;
-  MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
-  int max, i, fd, length, cam_setting;
-  unsigned long int cam_setting_long;
-  char readbuf[20];
-  char *filename_temp, *cmd_temp;
-
-  bcm_host_init();
   
-  //
-  // read arguments
-  //
-  unsigned char of_set = 0;
-  for(i=1; i<argc; i++) {
-    if(strcmp(argv[i], "-w") == 0) {
-      i++;
-      width = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-h") == 0) {
-      i++;
-      height = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-q") == 0) {
-      i++;
-      quality = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-d") == 0) {
-      i++;
-      divider = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-p") == 0) {
-      mp4box = 1;
-    }
-    else if(strcmp(argv[i], "-ic") == 0) {
-      i++;
-      image2_cnt = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-vc") == 0) {
-      i++;
-      video_cnt = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-of") == 0) {
-      i++;
-      jpeg_filename = argv[i];
-      of_set = 1;
-    }
-    else if(strcmp(argv[i], "-if") == 0) {
-      i++;
-      jpeg2_filename = argv[i];
-      of_set = 1;
-    }
-    else if(strcmp(argv[i], "-cf") == 0) {
-      i++;
-      pipe_filename = argv[i];
-    }
-    else if(strcmp(argv[i], "-vf") == 0) {
-      i++;
-      h264_filename = argv[i];
-    }
-    else if(strcmp(argv[i], "-sf") == 0) {
-      i++;
-      status_filename = argv[i];
-    }
-    else error("Invalid arguments");
-  }
-  if(!of_set) error("Output file not specified");
-
-  //
-  // create camera
-  //
   status = mmal_component_create(MMAL_COMPONENT_DEFAULT_CAMERA, &camera);
   if(status != MMAL_SUCCESS) error("Could not create camera");
   status = mmal_port_enable(camera->control, camera_control_callback);
@@ -347,6 +279,87 @@ int main (int argc, char* argv[]) {
 
   status = mmal_component_enable(camera);
   if(status != MMAL_SUCCESS) error("Could not enable camera");
+  
+}
+
+int main (int argc, char* argv[]) {
+
+  MMAL_STATUS_T status;
+  MMAL_COMPONENT_T *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder = 0, *resizer = 0;
+  MMAL_ES_FORMAT_T *format;
+  MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
+  int max, i, fd, length, cam_setting;
+  unsigned long int cam_setting_long;
+  char readbuf[20];
+  char *filename_temp, *cmd_temp;
+
+  bcm_host_init();
+  
+  //
+  // read arguments
+  //
+  unsigned char of_set = 0;
+  for(i=1; i<argc; i++) {
+    if(strcmp(argv[i], "-w") == 0) {
+      i++;
+      width = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-h") == 0) {
+      i++;
+      height = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-q") == 0) {
+      i++;
+      quality = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-d") == 0) {
+      i++;
+      divider = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-p") == 0) {
+      mp4box = 1;
+    }
+    else if(strcmp(argv[i], "-ic") == 0) {
+      i++;
+      image2_cnt = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-vc") == 0) {
+      i++;
+      video_cnt = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-of") == 0) {
+      i++;
+      jpeg_filename = argv[i];
+      of_set = 1;
+    }
+    else if(strcmp(argv[i], "-if") == 0) {
+      i++;
+      jpeg2_filename = argv[i];
+      of_set = 1;
+    }
+    else if(strcmp(argv[i], "-cf") == 0) {
+      i++;
+      pipe_filename = argv[i];
+    }
+    else if(strcmp(argv[i], "-vf") == 0) {
+      i++;
+      h264_filename = argv[i];
+    }
+    else if(strcmp(argv[i], "-sf") == 0) {
+      i++;
+      status_filename = argv[i];
+    }
+    else if(strcmp(argv[i], "-pa") == 0) {
+      autostart = 0;
+    }
+    else error("Invalid arguments");
+  }
+  if(!of_set) error("Output file not specified");
+
+  //
+  // create camera
+  //
+  if(autostart) create_camera();
   
   //
   // create jpeg-encoder
@@ -460,11 +473,13 @@ int main (int argc, char* argv[]) {
   //
   // connect
   //
-  status = mmal_connection_create(&con_cam_res, camera->output[0], resizer->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-  if(status != MMAL_SUCCESS) error("Could not create connection camera -> resizer");
-  status = mmal_connection_enable(con_cam_res);
-  if(status != MMAL_SUCCESS) error("Could not enable connection camera -> resizer");
-
+  if(autostart) {
+    status = mmal_connection_create(&con_cam_res, camera->output[0], resizer->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+    if(status != MMAL_SUCCESS) error("Could not create connection camera -> resizer");
+    status = mmal_connection_enable(con_cam_res);
+    if(status != MMAL_SUCCESS) error("Could not enable connection camera -> resizer");
+  }
+  
   status = mmal_connection_create(&con_res_jpeg, resizer->output[0], jpegencoder->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
   if(status != MMAL_SUCCESS) error("Could not create connection resizer -> encoder");
   status = mmal_connection_enable(con_res_jpeg);
@@ -481,11 +496,13 @@ int main (int argc, char* argv[]) {
     if(status != MMAL_SUCCESS) error("Could not send buffers to jpeg port");
   }
 
-  status = mmal_connection_create(&con_cam_jpeg, camera->output[2], jpegencoder2->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-  if(status != MMAL_SUCCESS) error("Could not create connection camera -> encoder");
-  status = mmal_connection_enable(con_cam_jpeg);
-  if(status != MMAL_SUCCESS) error("Could not enable connection camera -> encoder");
-
+  if(autostart) {
+    status = mmal_connection_create(&con_cam_jpeg, camera->output[2], jpegencoder2->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+    if(status != MMAL_SUCCESS) error("Could not create connection camera -> encoder");
+    status = mmal_connection_enable(con_cam_jpeg);
+    if(status != MMAL_SUCCESS) error("Could not enable connection camera -> encoder");
+  }
+  
   status = mmal_port_enable(jpegencoder2->output[0], jpegencoder2_buffer_callback);
   if(status != MMAL_SUCCESS) error("Could not enable jpeg port 2");
   max = mmal_queue_length(pool_jpegencoder2->queue);
@@ -500,8 +517,14 @@ int main (int argc, char* argv[]) {
   //
   // run
   //
-  if(pipe_filename != 0) printf("MJPEG streaming, ready to receive commands\n");
-  else printf("MJPEG streaming\n");
+  if(autostart) {
+    if(pipe_filename != 0) printf("MJPEG streaming, ready to receive commands\n");
+    else printf("MJPEG streaming\n");
+  }
+  else {
+    if(pipe_filename != 0) printf("MJPEG idle, ready to receive commands\n");
+    else printf("MJPEG idle\n");
+  }
 
   struct sigaction action;
   memset(&action, 0, sizeof(struct sigaction));
@@ -512,7 +535,8 @@ int main (int argc, char* argv[]) {
   if(status_filename != 0) {
     status_file = fopen(status_filename, "w");
     if(!status_file) error("Could not open/create status-file");
-    fprintf(status_file, "ready");
+    if(autostart) fprintf(status_file, "ready");
+    else fprintf(status_file, "halted");
     fclose(status_file);
   }
   
@@ -749,6 +773,39 @@ int main (int argc, char* argv[]) {
           status = mmal_port_format_commit(h264encoder->output[0]);
           if(status != MMAL_SUCCESS) error("Could not set bitrate");
           printf("Bitrate: %lu\n", cam_setting_long);
+        }
+        else if((readbuf[0]=='r') && (readbuf[1]=='u')) {
+          if(readbuf[3]=='0') {
+            status = mmal_connection_destroy(con_cam_res);
+            if(status != MMAL_SUCCESS) error("Could not destroy connection cam -> res");
+            status = mmal_component_disable(camera);
+            if(status != MMAL_SUCCESS) error("Could not disable camera");
+            status = mmal_component_destroy(camera);
+            if(status != MMAL_SUCCESS) error("Could not destroy camera");
+            printf("Stream halted\n");
+            if(status_filename != 0) {
+              status_file = fopen(status_filename, "w");
+              fprintf(status_file, "halted");
+              fclose(status_file);
+            }
+          }
+          else {
+            create_camera();
+            status = mmal_connection_create(&con_cam_res, camera->output[0], resizer->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+            if(status != MMAL_SUCCESS) error("Could not create connection camera -> resizer");
+            status = mmal_connection_enable(con_cam_res);
+            if(status != MMAL_SUCCESS) error("Could not enable connection camera -> resizer");
+            status = mmal_connection_create(&con_cam_jpeg, camera->output[2], jpegencoder2->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+            if(status != MMAL_SUCCESS) error("Could not create connection camera -> encoder");
+            status = mmal_connection_enable(con_cam_jpeg);
+            if(status != MMAL_SUCCESS) error("Could not enable connection camera -> encoder");
+            printf("Stream continued\n");
+            if(status_filename != 0) {
+              status_file = fopen(status_filename, "w");
+              fprintf(status_file, "ready");
+              fclose(status_file);
+            }
+          }
         }
       }
 
