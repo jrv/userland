@@ -68,7 +68,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "interface/mmal/util/mmal_default_components.h"
 #include "interface/mmal/util/mmal_connection.h"
 
-MMAL_COMPONENT_T *camera = 0;
+MMAL_COMPONENT_T *camera = 0, *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder = 0, *resizer = 0;
+MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
 FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
 unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
@@ -209,11 +210,15 @@ static void h264encoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
 
 }
 
-void create_camera (void) {
+void start_all (void) {
 
   MMAL_STATUS_T status;
   MMAL_ES_FORMAT_T *format;
+  int max, i;
   
+  //
+  // create camera
+  //
   status = mmal_component_create(MMAL_COMPONENT_DEFAULT_CAMERA, &camera);
   if(status != MMAL_SUCCESS) error("Could not create camera");
   status = mmal_port_enable(camera->control, camera_control_callback);
@@ -279,88 +284,7 @@ void create_camera (void) {
 
   status = mmal_component_enable(camera);
   if(status != MMAL_SUCCESS) error("Could not enable camera");
-  
-}
 
-int main (int argc, char* argv[]) {
-
-  MMAL_STATUS_T status;
-  MMAL_COMPONENT_T *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder = 0, *resizer = 0;
-  MMAL_ES_FORMAT_T *format;
-  MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
-  int max, i, fd, length, cam_setting;
-  unsigned long int cam_setting_long;
-  char readbuf[20];
-  char *filename_temp, *cmd_temp;
-
-  bcm_host_init();
-  
-  //
-  // read arguments
-  //
-  unsigned char of_set = 0;
-  for(i=1; i<argc; i++) {
-    if(strcmp(argv[i], "-w") == 0) {
-      i++;
-      width = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-h") == 0) {
-      i++;
-      height = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-q") == 0) {
-      i++;
-      quality = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-d") == 0) {
-      i++;
-      divider = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-p") == 0) {
-      mp4box = 1;
-    }
-    else if(strcmp(argv[i], "-ic") == 0) {
-      i++;
-      image2_cnt = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-vc") == 0) {
-      i++;
-      video_cnt = atoi(argv[i]);
-    }
-    else if(strcmp(argv[i], "-of") == 0) {
-      i++;
-      jpeg_filename = argv[i];
-      of_set = 1;
-    }
-    else if(strcmp(argv[i], "-if") == 0) {
-      i++;
-      jpeg2_filename = argv[i];
-      of_set = 1;
-    }
-    else if(strcmp(argv[i], "-cf") == 0) {
-      i++;
-      pipe_filename = argv[i];
-    }
-    else if(strcmp(argv[i], "-vf") == 0) {
-      i++;
-      h264_filename = argv[i];
-    }
-    else if(strcmp(argv[i], "-sf") == 0) {
-      i++;
-      status_filename = argv[i];
-    }
-    else if(strcmp(argv[i], "-pa") == 0) {
-      autostart = 0;
-    }
-    else error("Invalid arguments");
-  }
-  if(!of_set) error("Output file not specified");
-
-  //
-  // create camera
-  //
-  if(autostart) create_camera();
-  
   //
   // create jpeg-encoder
   //
@@ -473,12 +397,10 @@ int main (int argc, char* argv[]) {
   //
   // connect
   //
-  if(autostart) {
-    status = mmal_connection_create(&con_cam_res, camera->output[0], resizer->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-    if(status != MMAL_SUCCESS) error("Could not create connection camera -> resizer");
-    status = mmal_connection_enable(con_cam_res);
-    if(status != MMAL_SUCCESS) error("Could not enable connection camera -> resizer");
-  }
+  status = mmal_connection_create(&con_cam_res, camera->output[0], resizer->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+  if(status != MMAL_SUCCESS) error("Could not create connection camera -> resizer");
+  status = mmal_connection_enable(con_cam_res);
+  if(status != MMAL_SUCCESS) error("Could not enable connection camera -> resizer");
   
   status = mmal_connection_create(&con_res_jpeg, resizer->output[0], jpegencoder->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
   if(status != MMAL_SUCCESS) error("Could not create connection resizer -> encoder");
@@ -496,12 +418,10 @@ int main (int argc, char* argv[]) {
     if(status != MMAL_SUCCESS) error("Could not send buffers to jpeg port");
   }
 
-  if(autostart) {
-    status = mmal_connection_create(&con_cam_jpeg, camera->output[2], jpegencoder2->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-    if(status != MMAL_SUCCESS) error("Could not create connection camera -> encoder");
-    status = mmal_connection_enable(con_cam_jpeg);
-    if(status != MMAL_SUCCESS) error("Could not enable connection camera -> encoder");
-  }
+  status = mmal_connection_create(&con_cam_jpeg, camera->output[2], jpegencoder2->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+  if(status != MMAL_SUCCESS) error("Could not create connection camera -> encoder");
+  status = mmal_connection_enable(con_cam_jpeg);
+  if(status != MMAL_SUCCESS) error("Could not enable connection camera -> encoder");
   
   status = mmal_port_enable(jpegencoder2->output[0], jpegencoder2_buffer_callback);
   if(status != MMAL_SUCCESS) error("Could not enable jpeg port 2");
@@ -513,6 +433,100 @@ int main (int argc, char* argv[]) {
     status = mmal_port_send_buffer(jpegencoder2->output[0], jpegbuffer2);
     if(status != MMAL_SUCCESS) error("Could not send buffers to jpeg port 2");
   }
+
+}
+
+
+void stop_all (void) {
+
+  mmal_port_disable(jpegencoder->output[0]);
+  mmal_connection_destroy(con_cam_res);
+  mmal_connection_destroy(con_res_jpeg);
+  mmal_port_pool_destroy(jpegencoder->output[0], pool_jpegencoder);
+  mmal_component_disable(jpegencoder);
+  mmal_component_disable(camera);
+  mmal_component_destroy(jpegencoder);
+  mmal_component_destroy(h264encoder);
+  mmal_component_destroy(camera);
+
+}
+
+
+int main (int argc, char* argv[]) {
+
+  MMAL_STATUS_T status;
+  int i, max, fd, length, cam_setting;
+  unsigned long int cam_setting_long;
+  char readbuf[20];
+  char *filename_temp, *cmd_temp;
+
+  bcm_host_init();
+  
+  //
+  // read arguments
+  //
+  unsigned char of_set = 0;
+  for(i=1; i<argc; i++) {
+    if(strcmp(argv[i], "-w") == 0) {
+      i++;
+      width = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-h") == 0) {
+      i++;
+      height = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-q") == 0) {
+      i++;
+      quality = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-d") == 0) {
+      i++;
+      divider = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-p") == 0) {
+      mp4box = 1;
+    }
+    else if(strcmp(argv[i], "-ic") == 0) {
+      i++;
+      image2_cnt = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-vc") == 0) {
+      i++;
+      video_cnt = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-of") == 0) {
+      i++;
+      jpeg_filename = argv[i];
+      of_set = 1;
+    }
+    else if(strcmp(argv[i], "-if") == 0) {
+      i++;
+      jpeg2_filename = argv[i];
+      of_set = 1;
+    }
+    else if(strcmp(argv[i], "-cf") == 0) {
+      i++;
+      pipe_filename = argv[i];
+    }
+    else if(strcmp(argv[i], "-vf") == 0) {
+      i++;
+      h264_filename = argv[i];
+    }
+    else if(strcmp(argv[i], "-sf") == 0) {
+      i++;
+      status_filename = argv[i];
+    }
+    else if(strcmp(argv[i], "-pa") == 0) {
+      autostart = 0;
+    }
+    else error("Invalid arguments");
+  }
+  if(!of_set) error("Output file not specified");
+  
+  //
+  // init
+  //
+  if(autostart) start_all();
 
   //
   // run
@@ -776,12 +790,7 @@ int main (int argc, char* argv[]) {
         }
         else if((readbuf[0]=='r') && (readbuf[1]=='u')) {
           if(readbuf[3]=='0') {
-            status = mmal_connection_destroy(con_cam_res);
-            if(status != MMAL_SUCCESS) error("Could not destroy connection cam -> res");
-            status = mmal_component_disable(camera);
-            if(status != MMAL_SUCCESS) error("Could not disable camera");
-            status = mmal_component_destroy(camera);
-            if(status != MMAL_SUCCESS) error("Could not destroy camera");
+            stop_all();
             printf("Stream halted\n");
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
@@ -790,15 +799,7 @@ int main (int argc, char* argv[]) {
             }
           }
           else {
-            create_camera();
-            status = mmal_connection_create(&con_cam_res, camera->output[0], resizer->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-            if(status != MMAL_SUCCESS) error("Could not create connection camera -> resizer");
-            status = mmal_connection_enable(con_cam_res);
-            if(status != MMAL_SUCCESS) error("Could not enable connection camera -> resizer");
-            status = mmal_connection_create(&con_cam_jpeg, camera->output[2], jpegencoder2->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-            if(status != MMAL_SUCCESS) error("Could not create connection camera -> encoder");
-            status = mmal_connection_enable(con_cam_jpeg);
-            if(status != MMAL_SUCCESS) error("Could not enable connection camera -> encoder");
+            start_all();
             printf("Stream continued\n");
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
@@ -810,7 +811,7 @@ int main (int argc, char* argv[]) {
       }
 
     }
-    usleep(100);
+    usleep(100000);
   }
   
   printf("SIGINT/SIGTERM received, stopping\n");
@@ -818,15 +819,7 @@ int main (int argc, char* argv[]) {
   //
   // tidy up
   //
-  mmal_port_disable(jpegencoder->output[0]);
-  mmal_connection_destroy(con_cam_res);
-  mmal_connection_destroy(con_res_jpeg);
-  mmal_port_pool_destroy(jpegencoder->output[0], pool_jpegencoder);
-  mmal_component_disable(jpegencoder);
-  mmal_component_disable(camera);
-  mmal_component_destroy(jpegencoder);
-  mmal_component_destroy(h264encoder);
-  mmal_component_destroy(camera);
+  stop_all(); // TODO: nur wenn nicht angehalten
 
   return 0;
 
