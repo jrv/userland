@@ -74,7 +74,7 @@ FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL,
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
 unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
-unsigned char mp4box=0, running=1, autostart=1, quality=85;
+unsigned char mp4box=0, running=1, autostart=1, quality=85, idle=0;
 
 void error (const char *string) {
 
@@ -518,6 +518,7 @@ int main (int argc, char* argv[]) {
     }
     else if(strcmp(argv[i], "-pa") == 0) {
       autostart = 0;
+      idle = 1;
     }
     else error("Invalid arguments");
   }
@@ -791,6 +792,7 @@ int main (int argc, char* argv[]) {
         else if((readbuf[0]=='r') && (readbuf[1]=='u')) {
           if(readbuf[3]=='0') {
             stop_all();
+            idle = 1;
             printf("Stream halted\n");
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
@@ -800,6 +802,7 @@ int main (int argc, char* argv[]) {
           }
           else {
             start_all();
+            idle = 0;
             printf("Stream continued\n");
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
@@ -819,7 +822,7 @@ int main (int argc, char* argv[]) {
   //
   // tidy up
   //
-  stop_all(); // TODO: nur wenn nicht angehalten
+  if(!idle) stop_all();
 
   return 0;
 
