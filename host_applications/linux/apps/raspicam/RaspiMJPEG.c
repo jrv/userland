@@ -50,6 +50,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Usage information in README_RaspiMJPEG.md
  */
 
+#define VERSION "1.0"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,6 +115,8 @@ static void jpegencoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
       asprintf(&filename_temp, jpeg_filename, image_cnt);
       asprintf(&filename_temp2, "%s.part", filename_temp);
       jpegoutput_file = fopen(filename_temp2, "wb");
+      free(filename_temp);
+      free(filename_temp2);
       if(!jpegoutput_file) error("Could not open mjpeg-destination");
     }
     if(buffer->length) {
@@ -131,6 +135,8 @@ static void jpegencoder_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
       asprintf(&filename_temp, jpeg_filename, image_cnt);
       asprintf(&filename_temp2, "%s.part", filename_temp);
       rename(filename_temp2, filename_temp);
+      free(filename_temp);
+      free(filename_temp2);
       image_cnt++;
       mjpeg_cnt = 0;
     }
@@ -458,7 +464,7 @@ int main (int argc, char* argv[]) {
   int i, max, fd, length, cam_setting;
   unsigned long int cam_setting_long;
   char readbuf[20];
-  char *filename_temp, *cmd_temp;
+  char *filename_temp, *filename_temp2, *cmd_temp;
 
   bcm_host_init();
   
@@ -467,7 +473,13 @@ int main (int argc, char* argv[]) {
   //
   unsigned char of_set = 0;
   for(i=1; i<argc; i++) {
-    if(strcmp(argv[i], "-w") == 0) {
+    if(strcmp(argv[i], "--version") == 0) {
+      printf("RaspiMJPEG Version ");
+      printf(VERSION);
+      printf("\n");
+      exit(0);
+    }
+    else if(strcmp(argv[i], "-w") == 0) {
       i++;
       width = atoi(argv[i]);
     }
@@ -575,11 +587,16 @@ int main (int argc, char* argv[]) {
             if(status != MMAL_SUCCESS) error("Could not create connecton camera -> video converter");
             status = mmal_connection_enable(con_cam_h264);
             if(status != MMAL_SUCCESS) error("Could not enable connection camera -> video converter");
-            asprintf(&filename_temp, h264_filename, video_cnt);
             if(mp4box) {
-              asprintf(&filename_temp, "%s.h264", filename_temp);
+              asprintf(&filename_temp, h264_filename, video_cnt);
+              asprintf(&filename_temp2, "%s.h264", filename_temp);
             }
-            h264output_file = fopen(filename_temp, "wb");
+            else {
+              asprintf(&filename_temp2, h264_filename, video_cnt);
+            }
+            h264output_file = fopen(filename_temp2, "wb");
+            free(filename_temp2);
+            if(mp4box) free(filename_temp);
             if(!h264output_file) error("Could not open/create video-file");
             status = mmal_port_enable(h264encoder->output[0], h264encoder_buffer_callback);
             if(status != MMAL_SUCCESS) error("Could not enable video port");
@@ -621,8 +638,11 @@ int main (int argc, char* argv[]) {
               asprintf(&filename_temp, h264_filename, video_cnt);
               asprintf(&cmd_temp, "MP4Box -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
               if(system(cmd_temp) == -1) error("Could not start MP4Box");
-              asprintf(&filename_temp, "%s.h264", filename_temp);
-              remove(filename_temp);
+              asprintf(&filename_temp2, "%s.h264", filename_temp);
+              remove(filename_temp2);
+              free(filename_temp);
+              free(filename_temp2);
+              free(cmd_temp);
               printf("Boxing stopped\n");
             }
             video_cnt++;
@@ -636,6 +656,7 @@ int main (int argc, char* argv[]) {
         else if((readbuf[0]=='i') && (readbuf[1]=='m')) {
           asprintf(&filename_temp, jpeg2_filename, image2_cnt);
           jpegoutput2_file = fopen(filename_temp, "wb");
+          free(filename_temp);
           if(!jpegoutput2_file) error("Could not open/create image-file");
           status = mmal_port_parameter_set_boolean(camera->output[2], MMAL_PARAMETER_CAPTURE, 1);
           if(status != MMAL_SUCCESS) error("Could not start image capture");
