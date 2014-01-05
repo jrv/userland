@@ -20,12 +20,15 @@ Example usage as MJPEG-streamer with video capture and status-output:
 raspimjpeg -w 320 -h 180 -d 5 -of /path/to/image.jpg -cf /path/to/pipe -vf /path/to/video.h264 -sf /path/to/textfile.txt
 
 Until now, RaspiMJPEG wrote its status into stdout/stderr. With this new command, the status is also written into a textfile (no logging, just the newest status). Possible messages and their meanings are:
-ready   --> MJPEG is streaming, not capturing
-video   --> MJPEG is streaming and video is capturing
-boxing  --> MJPEG is streaming and video is packed into mp4
-image   --> MJPEG is streaming and image is capturing
-halted  --> RaspiMJPEG is idle
-errror  --> An error occured and the application terminated
+ready     --> MJPEG is streaming, not capturing
+video     --> MJPEG is streaming and video is capturing
+boxing    --> MJPEG is streaming and video is packed into mp4
+image     --> MJPEG is streaming and image is capturing
+halted    --> RaspiMJPEG is idle
+md_ready  --> See 'ready', motion is detection active
+md_video  --> See 'video', motion is detection active
+md_boxing --> See 'boxing', motion is detection active
+errror    --> An error occured and the application terminated
 
 
 Possible parameters:
@@ -42,6 +45,7 @@ Possible parameters:
 -ic   set the offset for image output numbering
 -vc   set the offset for video output numbering
 -pa   start RaspiMJPEG in idle state
+-md   start RaspiMJPEG with motion detection
 
 
 Possible Pipe-Commands:
@@ -63,3 +67,5 @@ qu    set output image quality (range: [0;100]; default: 85)
 bi    set output video bitrate (range: [0;25000000]; default: 17000000)
 ru 0  halt RaspiMJPEG and release camera
 ru 1  restart mjpeg-stream
+md 1  start motion detection
+md 0  stop motion detection
