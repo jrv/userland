@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Usage information in README_RaspiMJPEG.md
  */
 
-#define VERSION "1.0"
+#define VERSION "2.0"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <semaphore.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include "bcm_host.h"
 #include "interface/vcos/vcos.h"
@@ -76,7 +77,7 @@ FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL,
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
 unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
-unsigned char mp4box=0, running=1, autostart=1, quality=85, idle=0;
+unsigned char mp4box=0, running=1, autostart=1, quality=85, idle=0, capturing=0, motion_detection=0;
 
 void error (const char *string) {
 
@@ -465,6 +466,8 @@ int main (int argc, char* argv[]) {
   unsigned long int cam_setting_long;
   char readbuf[20];
   char *filename_temp, *filename_temp2, *cmd_temp;
+  time_t currTime;
+  struct tm *localTime;
 
   bcm_host_init();
   
@@ -532,6 +535,9 @@ int main (int argc, char* argv[]) {
       autostart = 0;
       idle = 1;
     }
+    else if(strcmp(argv[i], "-md") == 0) {
+      motion_detection = 1;
+    }
     else error("Invalid arguments");
   }
   if(!of_set) error("Output file not specified");
@@ -540,6 +546,9 @@ int main (int argc, char* argv[]) {
   // init
   //
   if(autostart) start_all();
+  if(motion_detection) {
+    if(system("motion") == -1) error("Could not start Motion");
+  }
 
   //
   // run
@@ -562,7 +571,10 @@ int main (int argc, char* argv[]) {
   if(status_filename != 0) {
     status_file = fopen(status_filename, "w");
     if(!status_file) error("Could not open/create status-file");
-    if(autostart) fprintf(status_file, "ready");
+    if(autostart) {
+      if(!motion_detection) fprintf(status_file, "ready");
+      else fprintf(status_file, "md_ready");
+    }
     else fprintf(status_file, "halted");
     fclose(status_file);
   }
@@ -579,82 +591,95 @@ int main (int argc, char* argv[]) {
       if(length) {
         if((readbuf[0]=='c') && (readbuf[1]=='a')) {
           if(readbuf[3]=='1') {
-            status = mmal_component_enable(h264encoder);
-            if(status != MMAL_SUCCESS) error("Could not enable h264encoder");
-            pool_h264encoder = mmal_port_pool_create(h264encoder->output[0], h264encoder->output[0]->buffer_num, h264encoder->output[0]->buffer_size);
-            if(!pool_h264encoder) error("Could not create pool");
-            status = mmal_connection_create(&con_cam_h264, camera->output[1], h264encoder->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-            if(status != MMAL_SUCCESS) error("Could not create connecton camera -> video converter");
-            status = mmal_connection_enable(con_cam_h264);
-            if(status != MMAL_SUCCESS) error("Could not enable connection camera -> video converter");
-            if(mp4box) {
-              asprintf(&filename_temp, h264_filename, video_cnt);
-              asprintf(&filename_temp2, "%s.h264", filename_temp);
-            }
-            else {
-              asprintf(&filename_temp2, h264_filename, video_cnt);
-            }
-            h264output_file = fopen(filename_temp2, "wb");
-            free(filename_temp2);
-            if(mp4box) free(filename_temp);
-            if(!h264output_file) error("Could not open/create video-file");
-            status = mmal_port_enable(h264encoder->output[0], h264encoder_buffer_callback);
-            if(status != MMAL_SUCCESS) error("Could not enable video port");
-            max = mmal_queue_length(pool_h264encoder->queue);
-            for(i=0;i<max;i++) {
-              MMAL_BUFFER_HEADER_T *h264buffer = mmal_queue_get(pool_h264encoder->queue);
-              if(!h264buffer) error("Could not create video pool header");
-              status = mmal_port_send_buffer(h264encoder->output[0], h264buffer);
-              if(status != MMAL_SUCCESS) error("Could not send buffers to video port");
-            }
-            mmal_port_parameter_set_boolean(camera->output[1], MMAL_PARAMETER_CAPTURE, 1);
-            if(status != MMAL_SUCCESS) error("Could not start capture");
-            printf("Capturing started\n");
-            if(status_filename != 0) {
-              status_file = fopen(status_filename, "w");
-              fprintf(status_file, "video");
-              fclose(status_file);
+            if(!capturing) {
+              status = mmal_component_enable(h264encoder);
+              if(status != MMAL_SUCCESS) error("Could not enable h264encoder");
+              pool_h264encoder = mmal_port_pool_create(h264encoder->output[0], h264encoder->output[0]->buffer_num, h264encoder->output[0]->buffer_size);
+              if(!pool_h264encoder) error("Could not create pool");
+              status = mmal_connection_create(&con_cam_h264, camera->output[1], h264encoder->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+              if(status != MMAL_SUCCESS) error("Could not create connecton camera -> video converter");
+              status = mmal_connection_enable(con_cam_h264);
+              if(status != MMAL_SUCCESS) error("Could not enable connection camera -> video converter");
+              currTime = time(NULL);
+              localTime = localtime (&currTime);
+              if(mp4box) {
+                asprintf(&filename_temp, h264_filename, video_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
+                asprintf(&filename_temp2, "%s.h264", filename_temp);
+              }
+              else {
+                asprintf(&filename_temp2, h264_filename, video_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
+              }
+              h264output_file = fopen(filename_temp2, "wb");
+              free(filename_temp2);
+              if(mp4box) free(filename_temp);
+              if(!h264output_file) error("Could not open/create video-file");
+              status = mmal_port_enable(h264encoder->output[0], h264encoder_buffer_callback);
+              if(status != MMAL_SUCCESS) error("Could not enable video port");
+              max = mmal_queue_length(pool_h264encoder->queue);
+              for(i=0;i<max;i++) {
+                MMAL_BUFFER_HEADER_T *h264buffer = mmal_queue_get(pool_h264encoder->queue);
+                if(!h264buffer) error("Could not create video pool header");
+                status = mmal_port_send_buffer(h264encoder->output[0], h264buffer);
+                if(status != MMAL_SUCCESS) error("Could not send buffers to video port");
+              }
+              mmal_port_parameter_set_boolean(camera->output[1], MMAL_PARAMETER_CAPTURE, 1);
+              if(status != MMAL_SUCCESS) error("Could not start capture");
+              printf("Capturing started\n");
+              if(status_filename != 0) {
+                status_file = fopen(status_filename, "w");
+                if(!motion_detection) fprintf(status_file, "video");
+                else fprintf(status_file, "md_video");
+                fclose(status_file);
+              }
+              capturing = 1;
             }
           }
           else {
-            mmal_port_parameter_set_boolean(camera->output[1], MMAL_PARAMETER_CAPTURE, 0);
-            if(status != MMAL_SUCCESS) error("Could not stop capture");
-            status = mmal_port_disable(h264encoder->output[0]);
-            if(status != MMAL_SUCCESS) error("Could not disable video port");
-            status = mmal_connection_destroy(con_cam_h264);
-            if(status != MMAL_SUCCESS) error("Could not destroy connection camera -> video encoder");
-            mmal_port_pool_destroy(h264encoder->output[0], pool_h264encoder);
-            if(status != MMAL_SUCCESS) error("Could not destroy video buffer pool");
-            status = mmal_component_disable(h264encoder);
-            if(status != MMAL_SUCCESS) error("Could not disable video converter");
-            fclose(h264output_file);
-            h264output_file = NULL;
-            printf("Capturing stopped\n");
-            if(mp4box) {
-              printf("Boxing started\n");
-              status_file = fopen(status_filename, "w");
-              fprintf(status_file, "boxing");
-              fclose(status_file);
-              asprintf(&filename_temp, h264_filename, video_cnt);
-              asprintf(&cmd_temp, "MP4Box -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
-              if(system(cmd_temp) == -1) error("Could not start MP4Box");
-              asprintf(&filename_temp2, "%s.h264", filename_temp);
-              remove(filename_temp2);
-              free(filename_temp);
-              free(filename_temp2);
-              free(cmd_temp);
-              printf("Boxing stopped\n");
-            }
-            video_cnt++;
-            if(status_filename != 0) {
-              status_file = fopen(status_filename, "w");
-              fprintf(status_file, "ready");
-              fclose(status_file);
+            if(capturing) {
+              mmal_port_parameter_set_boolean(camera->output[1], MMAL_PARAMETER_CAPTURE, 0);
+              if(status != MMAL_SUCCESS) error("Could not stop capture");
+              status = mmal_port_disable(h264encoder->output[0]);
+              if(status != MMAL_SUCCESS) error("Could not disable video port");
+              status = mmal_connection_destroy(con_cam_h264);
+              if(status != MMAL_SUCCESS) error("Could not destroy connection camera -> video encoder");
+              mmal_port_pool_destroy(h264encoder->output[0], pool_h264encoder);
+              if(status != MMAL_SUCCESS) error("Could not destroy video buffer pool");
+              status = mmal_component_disable(h264encoder);
+              if(status != MMAL_SUCCESS) error("Could not disable video converter");
+              fclose(h264output_file);
+              h264output_file = NULL;
+              printf("Capturing stopped\n");
+              if(mp4box) {
+                printf("Boxing started\n");
+                status_file = fopen(status_filename, "w");
+                if(!motion_detection) fprintf(status_file, "boxing");
+                else fprintf(status_file, "md_boxing");
+                fclose(status_file);
+                asprintf(&filename_temp, h264_filename, video_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
+                asprintf(&cmd_temp, "MP4Box -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
+                if(system(cmd_temp) == -1) error("Could not start MP4Box");
+                asprintf(&filename_temp2, "%s.h264", filename_temp);
+                remove(filename_temp2);
+                free(filename_temp);
+                free(filename_temp2);
+                free(cmd_temp);
+                printf("Boxing stopped\n");
+              }
+              video_cnt++;
+              if(status_filename != 0) {
+                status_file = fopen(status_filename, "w");
+                if(!motion_detection) fprintf(status_file, "ready");
+                else fprintf(status_file, "md_ready");
+                fclose(status_file);
+              }
+              capturing = 0;
             }
           }
         }
         else if((readbuf[0]=='i') && (readbuf[1]=='m')) {
-          asprintf(&filename_temp, jpeg2_filename, image2_cnt);
+          currTime = time(NULL);
+          localTime = localtime (&currTime);
+          asprintf(&filename_temp, jpeg2_filename, image2_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
           jpegoutput2_file = fopen(filename_temp, "wb");
           free(filename_temp);
           if(!jpegoutput2_file) error("Could not open/create image-file");
@@ -828,6 +853,28 @@ int main (int argc, char* argv[]) {
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
               fprintf(status_file, "ready");
+              fclose(status_file);
+            }
+          }
+        }
+        else if((readbuf[0]=='m') && (readbuf[1]=='d')) {
+          if(readbuf[3]=='0') {
+            motion_detection = 0;
+            if(system("killall motion") == -1) error("Could not stop Motion");
+            printf("Motion detection stopped\n");
+            if(status_filename != 0) {
+              status_file = fopen(status_filename, "w");
+              fprintf(status_file, "ready");
+              fclose(status_file);
+            }
+          }
+          else {
+            motion_detection = 1;
+            if(system("motion") == -1) error("Could not start Motion");
+            printf("Motion detection started\n");
+            if(status_filename != 0) {
+              status_file = fopen(status_filename, "w");
+              fprintf(status_file, "md_ready");
               fclose(status_file);
             }
           }
