@@ -75,9 +75,9 @@ MMAL_COMPONENT_T *camera = 0, *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder 
 MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
 FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
-unsigned int mjpeg_cnt=0, width=320, height=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
+unsigned int mjpeg_cnt=0, width=320, height=240, width_pic=320, height_pic=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
-unsigned char mp4box=0, running=1, autostart=1, quality=85, idle=0, capturing=0, motion_detection=0;
+unsigned char mp4box=0, running=1, autostart=1, quality=85, idle=0, capturing=0, motion_detection=0, img_mode = 0;
 
 void error (const char *string) {
 
@@ -172,7 +172,8 @@ static void jpegencoder2_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_
     fclose(jpegoutput2_file);
     if(status_filename != 0) {
       status_file = fopen(status_filename, "w");
-      fprintf(status_file, "ready");
+      if(img_mode) fprintf(status_file, "ready_img");
+      else fprintf(status_file, "ready_vid");
       fclose(status_file);
     }
     image2_cnt++;
@@ -237,8 +238,8 @@ void start_all (void) {
     .max_stills_h = 1944,
     .stills_yuv422 = 0,
     .one_shot_stills = 1,
-    .max_preview_video_w = 1920,
-    .max_preview_video_h = 1080,
+    .max_preview_video_w = img_mode ? 2592 : 1920,
+    .max_preview_video_h = img_mode ? 1944 : 1080,
     .num_preview_video_frames = 3,
     .stills_capture_circular_buffer_height = 0,
     .fast_preview_resume = 0,
@@ -247,13 +248,13 @@ void start_all (void) {
   mmal_port_parameter_set(camera->control, &cam_config.hdr);
   
   format = camera->output[0]->format;
-  format->es->video.width = 1920;
-  format->es->video.height = 1080;
+  format->es->video.width = img_mode ? 2592 : 1920;
+  format->es->video.height = img_mode ? 1944 : 1080;
   format->es->video.crop.x = 0;
   format->es->video.crop.y = 0;
-  format->es->video.crop.width = 1920;
-  format->es->video.crop.height = 1080;
-  format->es->video.frame_rate.num = 30;
+  format->es->video.crop.width = img_mode ? 2592 : 1920;
+  format->es->video.crop.height = img_mode ? 1944 : 1080;
+  format->es->video.frame_rate.num = img_mode ? 15 : 30;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[0]);
   if(status != MMAL_SUCCESS) error("Coult not set preview format");
@@ -261,13 +262,13 @@ void start_all (void) {
   format = camera->output[1]->format;
   format->encoding_variant = MMAL_ENCODING_I420;
   format->encoding = MMAL_ENCODING_OPAQUE;
-  format->es->video.width = 1920;
-  format->es->video.height = 1080;
+  format->es->video.width = img_mode ? 2592 : 1920;
+  format->es->video.height = img_mode ? 1944 : 1080;
   format->es->video.crop.x = 0;
   format->es->video.crop.y = 0;
-  format->es->video.crop.width = 1920;
-  format->es->video.crop.height = 1080;
-  format->es->video.frame_rate.num = 30;
+  format->es->video.crop.width = img_mode ? 2592 : 1920;
+  format->es->video.crop.height = img_mode ? 1944 : 1080;
+  format->es->video.frame_rate.num = img_mode ? 15 : 30;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[1]);
   if(status != MMAL_SUCCESS) error("Could not set video format");
@@ -387,12 +388,12 @@ void start_all (void) {
   if(status != MMAL_SUCCESS && status != MMAL_ENOSYS) error("Could not create image resizer");
   
   format = resizer->output[0]->format;
-  format->es->video.width = width;
-  format->es->video.height = height;
+  format->es->video.width = img_mode ? width_pic : width;
+  format->es->video.height = img_mode ? height_pic : height;
   format->es->video.crop.x = 0;
   format->es->video.crop.y = 0;
-  format->es->video.crop.width = width;
-  format->es->video.crop.height = height;
+  format->es->video.crop.width = img_mode ? width_pic : width;
+  format->es->video.crop.height = img_mode ? height_pic : height;
   format->es->video.frame_rate.num = 30;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(resizer->output[0]);
@@ -490,6 +491,14 @@ int main (int argc, char* argv[]) {
       i++;
       height = atoi(argv[i]);
     }
+    else if(strcmp(argv[i], "-wp") == 0) {
+      i++;
+      width_pic = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i], "-hp") == 0) {
+      i++;
+      height_pic = atoi(argv[i]);
+    }
     else if(strcmp(argv[i], "-q") == 0) {
       i++;
       quality = atoi(argv[i]);
@@ -572,7 +581,7 @@ int main (int argc, char* argv[]) {
     status_file = fopen(status_filename, "w");
     if(!status_file) error("Could not open/create status-file");
     if(autostart) {
-      if(!motion_detection) fprintf(status_file, "ready");
+      if(!motion_detection) fprintf(status_file, "ready_vid");
       else fprintf(status_file, "md_ready");
     }
     else fprintf(status_file, "halted");
@@ -589,7 +598,29 @@ int main (int argc, char* argv[]) {
       close(fd);
 
       if(length) {
-        if((readbuf[0]=='c') && (readbuf[1]=='a')) {
+        if((readbuf[0]=='p') && (readbuf[1]=='m')) {
+          stop_all();
+          img_mode = 1;
+          start_all();
+          printf("Change to image mode\n");
+          if(status_filename != 0) {
+            status_file = fopen(status_filename, "w");
+            fprintf(status_file, "ready_img");
+            fclose(status_file);
+          }
+        }
+        else if((readbuf[0]=='v') && (readbuf[1]=='m')) {
+          stop_all();
+          img_mode = 0;
+          start_all();
+          printf("Change to video mode\n");
+          if(status_filename != 0) {
+            status_file = fopen(status_filename, "w");
+            fprintf(status_file, "ready_vid");
+            fclose(status_file);
+          }
+        }
+        else if((readbuf[0]=='c') && (readbuf[1]=='a')) {
           if(readbuf[3]=='1') {
             if(!capturing) {
               status = mmal_component_enable(h264encoder);
@@ -668,7 +699,7 @@ int main (int argc, char* argv[]) {
               video_cnt++;
               if(status_filename != 0) {
                 status_file = fopen(status_filename, "w");
-                if(!motion_detection) fprintf(status_file, "ready");
+                if(!motion_detection) fprintf(status_file, "ready_vid");
                 else fprintf(status_file, "md_ready");
                 fclose(status_file);
               }
@@ -852,7 +883,8 @@ int main (int argc, char* argv[]) {
             printf("Stream continued\n");
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
-              fprintf(status_file, "ready");
+              if(img_mode) fprintf(status_file, "ready_img");
+              else fprintf(status_file, "ready_vid");
               fclose(status_file);
             }
           }
@@ -864,7 +896,7 @@ int main (int argc, char* argv[]) {
             printf("Motion detection stopped\n");
             if(status_filename != 0) {
               status_file = fopen(status_filename, "w");
-              fprintf(status_file, "ready");
+              fprintf(status_file, "ready_vid");
               fclose(status_file);
             }
           }
