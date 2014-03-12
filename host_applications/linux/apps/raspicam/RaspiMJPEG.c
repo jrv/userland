@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Usage information in README_RaspiMJPEG.md
  */
 
-#define VERSION "2.0"
+#define VERSION "3.0"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,10 +75,13 @@ MMAL_COMPONENT_T *camera = 0, *jpegencoder = 0, *jpegencoder2 = 0, *h264encoder 
 MMAL_CONNECTION_T *con_cam_res, *con_res_jpeg, *con_cam_h264, *con_cam_jpeg;
 FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL, *status_file = NULL;
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
-unsigned int mjpeg_cnt=0, width=320, height=240, width_pic=320, height_pic=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
+unsigned int tl_cnt=0, mjpeg_cnt=0, width=320, height=240, width_pic=320, height_pic=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
-unsigned char mp4box=0, running=1, autostart=1, quality=85, idle=0, capturing=0, motion_detection=0, img_mode = 0;
-
+unsigned char timelapse=0, mp4box=0, running=1, autostart=1, quality=85, idle=0, capturing=0, motion_detection=0, img_mode=0;
+int time_between_pic;
+time_t currTime;
+struct tm *localTime;
+  
 void error (const char *string) {
 
   fprintf(stderr, "Error: %s\n", string);
@@ -171,12 +174,15 @@ static void jpegencoder2_buffer_callback (MMAL_PORT_T *port, MMAL_BUFFER_HEADER_
   if(buffer->flags & MMAL_BUFFER_HEADER_FLAG_FRAME_END) {
     fclose(jpegoutput2_file);
     if(status_filename != 0) {
-      status_file = fopen(status_filename, "w");
-      if(img_mode) fprintf(status_file, "ready_img");
-      else fprintf(status_file, "ready_vid");
-      fclose(status_file);
+      if(!timelapse) {
+        status_file = fopen(status_filename, "w");
+        if(img_mode) fprintf(status_file, "ready_img");
+        else fprintf(status_file, "ready_vid");
+        fclose(status_file);
+      }
     }
     image2_cnt++;
+    capturing = 0;
   }
 
   mmal_buffer_header_release(buffer);
@@ -459,6 +465,30 @@ void stop_all (void) {
 
 }
 
+void capt_img (void) {
+
+  MMAL_STATUS_T status;
+  char *filename_temp;
+
+  currTime = time(NULL);
+  localTime = localtime (&currTime);
+  asprintf(&filename_temp, jpeg2_filename, image2_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
+  jpegoutput2_file = fopen(filename_temp, "wb");
+  free(filename_temp);
+  if(!jpegoutput2_file) error("Could not open/create image-file");
+  status = mmal_port_parameter_set_boolean(camera->output[2], MMAL_PARAMETER_CAPTURE, 1);
+  if(status != MMAL_SUCCESS) error("Could not start image capture");
+  printf("Capturing image\n");
+  if(status_filename != 0) {
+    if(!timelapse) {
+      status_file = fopen(status_filename, "w");
+      fprintf(status_file, "image");
+      fclose(status_file);
+    }
+  }
+  capturing = 1;
+
+}
 
 int main (int argc, char* argv[]) {
 
@@ -467,8 +497,6 @@ int main (int argc, char* argv[]) {
   unsigned long int cam_setting_long;
   char readbuf[20];
   char *filename_temp, *filename_temp2, *cmd_temp;
-  time_t currTime;
-  struct tm *localTime;
 
   bcm_host_init();
   
@@ -547,6 +575,9 @@ int main (int argc, char* argv[]) {
     else if(strcmp(argv[i], "-md") == 0) {
       motion_detection = 1;
     }
+    else if(strcmp(argv[i], "-fp") == 0) {
+      img_mode = 1;
+    }
     else error("Invalid arguments");
   }
   if(!of_set) error("Output file not specified");
@@ -581,7 +612,10 @@ int main (int argc, char* argv[]) {
     status_file = fopen(status_filename, "w");
     if(!status_file) error("Could not open/create status-file");
     if(autostart) {
-      if(!motion_detection) fprintf(status_file, "ready_vid");
+      if(!motion_detection) {
+        if(img_mode) fprintf(status_file, "ready_img");
+        else fprintf(status_file, "ready_vid");
+      }
       else fprintf(status_file, "md_ready");
     }
     else fprintf(status_file, "halted");
@@ -590,7 +624,7 @@ int main (int argc, char* argv[]) {
   
   while(running) {
     if(pipe_filename != 0) {
-    
+
       fd = open(pipe_filename, O_RDONLY | O_NONBLOCK);
       if(fd < 0) error("Could not open PIPE");
       fcntl(fd, F_SETFL, 0);
@@ -708,19 +742,31 @@ int main (int argc, char* argv[]) {
           }
         }
         else if((readbuf[0]=='i') && (readbuf[1]=='m')) {
-          currTime = time(NULL);
-          localTime = localtime (&currTime);
-          asprintf(&filename_temp, jpeg2_filename, image2_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
-          jpegoutput2_file = fopen(filename_temp, "wb");
-          free(filename_temp);
-          if(!jpegoutput2_file) error("Could not open/create image-file");
-          status = mmal_port_parameter_set_boolean(camera->output[2], MMAL_PARAMETER_CAPTURE, 1);
-          if(status != MMAL_SUCCESS) error("Could not start image capture");
-          printf("Capturing image\n");
-          if(status_filename != 0) {
-            status_file = fopen(status_filename, "w");
-            fprintf(status_file, "image");
-            fclose(status_file);
+          capt_img();
+        }
+        else if((readbuf[0]=='t') && (readbuf[1]=='l')) {
+          readbuf[0] = ' ';
+          readbuf[1] = ' ';
+          readbuf[length] = 0;
+          time_between_pic = atoi(readbuf);
+          if(time_between_pic) {
+            if(status_filename != 0) {
+              status_file = fopen(status_filename, "w");
+              fprintf(status_file, "timelapse");
+              fclose(status_file);
+            }
+            timelapse = 1;
+            printf("Timelapse started\n");
+          }
+          else {
+            if(status_filename != 0) {
+              status_file = fopen(status_filename, "w");
+              if(img_mode) fprintf(status_file, "ready_img");
+              else fprintf(status_file, "ready_vid");
+              fclose(status_file);
+            }
+            timelapse = 0;
+            printf("Timelapse stopped\n");
           }
         }
         else if((readbuf[0]=='s') && (readbuf[1]=='h')) {
@@ -913,6 +959,15 @@ int main (int argc, char* argv[]) {
         }
       }
 
+    }
+    if(timelapse) {
+      tl_cnt++;
+      if(tl_cnt >= time_between_pic) {
+        if(capturing == 0) {
+          capt_img();
+          tl_cnt = 0;
+        }
+      }
     }
     usleep(100000);
   }
