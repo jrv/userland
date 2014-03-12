@@ -25,6 +25,7 @@ ready_img --> MJPEG is streaming, not capturing, image mode
 video     --> MJPEG is streaming and video is capturing
 boxing    --> MJPEG is streaming and video is packed into mp4
 image     --> MJPEG is streaming and image is capturing
+timelapse --> MJPEG is streaming and timelapse is active
 halted    --> RaspiMJPEG is idle
 md_ready  --> See 'ready', motion is detection active
 md_video  --> See 'video', motion is detection active
@@ -49,6 +50,7 @@ Possible parameters:
 -vc   set the offset for video output numbering
 -pa   start RaspiMJPEG in idle state
 -md   start RaspiMJPEG with motion detection
+-fp   start RaspiMJPEG in image mode
 
 
 Possible Pipe-Commands:
@@ -57,6 +59,8 @@ vm    change to video mode
 ca 1  start video capture
 ca 0  stop video capture
 im    capture image
+tl    start timelapse, parameter is time between images in 1/10 seconds.
+tl 0  stop timelapse
 sh    set sharpness (range: [-100;100]; default: 0)
 co    set contrast (range: [-100;100]; default: 0)
 br    set brightness (range: [0;100]; default: 50)
