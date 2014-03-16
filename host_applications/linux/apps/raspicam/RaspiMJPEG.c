@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Usage information in README_RaspiMJPEG.md
  */
 
-#define VERSION "3.0"
+#define VERSION "3.1"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -244,8 +244,8 @@ void start_all (void) {
     .max_stills_h = 1944,
     .stills_yuv422 = 0,
     .one_shot_stills = 1,
-    .max_preview_video_w = img_mode ? 2592 : 1920,
-    .max_preview_video_h = img_mode ? 1944 : 1080,
+    .max_preview_video_w = img_mode ? 1296 : 1920,
+    .max_preview_video_h = img_mode ? 976 : 1080,
     .num_preview_video_frames = 3,
     .stills_capture_circular_buffer_height = 0,
     .fast_preview_resume = 0,
@@ -254,13 +254,13 @@ void start_all (void) {
   mmal_port_parameter_set(camera->control, &cam_config.hdr);
   
   format = camera->output[0]->format;
-  format->es->video.width = img_mode ? 2592 : 1920;
-  format->es->video.height = img_mode ? 1944 : 1080;
+  format->es->video.width = img_mode ? 1296 : 1920;
+  format->es->video.height = img_mode ? 976 : 1080;
   format->es->video.crop.x = 0;
   format->es->video.crop.y = 0;
-  format->es->video.crop.width = img_mode ? 2592 : 1920;
-  format->es->video.crop.height = img_mode ? 1944 : 1080;
-  format->es->video.frame_rate.num = img_mode ? 15 : 30;
+  format->es->video.crop.width = img_mode ? 1296 : 1920;
+  format->es->video.crop.height = img_mode ? 976 : 1080;
+  format->es->video.frame_rate.num = 0;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[0]);
   if(status != MMAL_SUCCESS) error("Coult not set preview format");
@@ -268,13 +268,13 @@ void start_all (void) {
   format = camera->output[1]->format;
   format->encoding_variant = MMAL_ENCODING_I420;
   format->encoding = MMAL_ENCODING_OPAQUE;
-  format->es->video.width = img_mode ? 2592 : 1920;
-  format->es->video.height = img_mode ? 1944 : 1080;
+  format->es->video.width = img_mode ? 1296 : 1920;
+  format->es->video.height = img_mode ? 976 : 1080;
   format->es->video.crop.x = 0;
   format->es->video.crop.y = 0;
-  format->es->video.crop.width = img_mode ? 2592 : 1920;
-  format->es->video.crop.height = img_mode ? 1944 : 1080;
-  format->es->video.frame_rate.num = img_mode ? 15 : 30;
+  format->es->video.crop.width = img_mode ? 1296 : 1920;
+  format->es->video.crop.height = img_mode ? 976 : 1080;
+  format->es->video.frame_rate.num = 0;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[1]);
   if(status != MMAL_SUCCESS) error("Could not set video format");
@@ -289,7 +289,7 @@ void start_all (void) {
   format->es->video.crop.y = 0;
   format->es->video.crop.width = 2592;
   format->es->video.crop.height = 1944;
-  format->es->video.frame_rate.num = 1;
+  format->es->video.frame_rate.num = 0;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[2]);
   if(status != MMAL_SUCCESS) error("Could not set still format");
