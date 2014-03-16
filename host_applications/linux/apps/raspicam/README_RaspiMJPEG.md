@@ -20,8 +20,7 @@ Example usage as MJPEG-streamer with video capture and status-output:
 raspimjpeg -w 320 -h 180 -d 5 -of /path/to/image.jpg -cf /path/to/pipe -vf /path/to/video.h264 -sf /path/to/textfile.txt
 
 Until now, RaspiMJPEG wrote its status into stdout/stderr. With this new command, the status is also written into a textfile (no logging, just the newest status). Possible messages and their meanings are:
-ready_vid --> MJPEG is streaming, not capturing, video mode
-ready_img --> MJPEG is streaming, not capturing, image mode
+ready     --> MJPEG is streaming, not capturing
 video     --> MJPEG is streaming and video is capturing
 boxing    --> MJPEG is streaming and video is packed into mp4
 image     --> MJPEG is streaming and image is capturing
@@ -54,8 +53,7 @@ Possible parameters:
 
 
 Possible Pipe-Commands:
-pm    change to image mode
-vm    change to video mode
+pm    set preview mode (range:[4_3/16_9_STD/16_9_WIDE])
 ca 1  start video capture
 ca 0  stop video capture
 im    capture image

@@ -252,8 +252,8 @@ interface/vmcs_host/linux/vcfiled/preinstall:
 # Target rules for target interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir
 
 # All Build rule for target.
-interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir/all: interface/vcos/pthreads/CMakeFiles/vcos.dir/all
 interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir/all: interface/vmcs_host/CMakeFiles/vchostif.dir/all
+interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir/all: interface/vcos/pthreads/CMakeFiles/vcos.dir/all
 interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir/all: interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled_check.dir/all
 interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir/all: interface/vchiq_arm/CMakeFiles/vchiq_arm.dir/all
 	$(MAKE) -f interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir/build.make interface/vmcs_host/linux/vcfiled/CMakeFiles/vcfiled.dir/depend
@@ -1114,8 +1114,8 @@ host_applications/linux/libs/bcm_host/preinstall:
 # Target rules for target host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir
 
 # All Build rule for target.
-host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir/all: interface/vcos/pthreads/CMakeFiles/vcos.dir/all
 host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir/all: interface/vmcs_host/CMakeFiles/vchostif.dir/all
+host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir/all: interface/vcos/pthreads/CMakeFiles/vcos.dir/all
 	$(MAKE) -f host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir/build.make host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir/depend
 	$(MAKE) -f host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir/build.make host_applications/linux/libs/bcm_host/CMakeFiles/bcm_host.dir/build
 	$(CMAKE_COMMAND) -E cmake_progress_report /home/pi/userland/build/raspberry/release/CMakeFiles  34 35
@@ -1165,8 +1165,8 @@ host_applications/linux/apps/gencmd/preinstall:
 # Target rules for target host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir
 
 # All Build rule for target.
-host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/all: interface/vcos/pthreads/CMakeFiles/vcos.dir/all
 host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/all: interface/vmcs_host/CMakeFiles/vchostif.dir/all
+host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/all: interface/vcos/pthreads/CMakeFiles/vcos.dir/all
 host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/all: interface/vchiq_arm/CMakeFiles/vchiq_arm.dir/all
 	$(MAKE) -f host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/build.make host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/depend
 	$(MAKE) -f host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/build.make host_applications/linux/apps/gencmd/CMakeFiles/vcgencmd.dir/build
