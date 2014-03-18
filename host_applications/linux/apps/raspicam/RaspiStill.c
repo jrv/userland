@@ -57,7 +57,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <sysexits.h>
 
-#define VERSION_STRING "v1.3.5"
+#define VERSION_STRING "v1.3.7"
 
 #include "bcm_host.h"
 #include "interface/vcos/vcos.h"
@@ -88,7 +88,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 // Stills format information
-#define STILLS_FRAME_RATE_NUM 15
+// 0 implies variable
+#define STILLS_FRAME_RATE_NUM 0
 #define STILLS_FRAME_RATE_DEN 1
 
 /// Video render needs at least 2 buffers.
@@ -134,6 +135,7 @@ typedef struct
    int fullResPreview;                 /// If set, the camera preview port runs at capture resolution. Reduces fps.
    int frameNextMethod;                /// Which method to use to advance to next frame
    int useGL;                          /// Render preview using OpenGL
+   int glCapture;                      /// Save the GL frame-buffer instead of camera output
 
    RASPIPREVIEW_PARAMETERS preview_parameters;    /// Preview setup parameters
    RASPICAM_CAMERA_PARAMETERS camera_parameters; /// Camera setup parameters
@@ -181,6 +183,7 @@ static void store_exif_tag(RASPISTILL_STATE *state, const char *exif_tag);
 #define CommandKeypress     15
 #define CommandSignal       16
 #define CommandGL           17
+#define CommandGLCapture    18
 
 static COMMAND_LIST cmdline_commands[] =
 {
@@ -202,6 +205,7 @@ static COMMAND_LIST cmdline_commands[] =
    { CommandKeypress,"-keypress",   "k",  "Wait between captures for a ENTER, X then ENTER to exit", 0},
    { CommandSignal,  "-signal",     "s",  "Wait between captures for a SIGUSR1 from another process", 0},
    { CommandGL,      "-gl",         "g",  "Draw preview to texture instead of using video render component", 0},
+   { CommandGLCapture, "-glcapture","gc", "Capture the GL frame-buffer instead of the camera image", 0},
 };
 
 static int cmdline_commands_size = sizeof(cmdline_commands) / sizeof(cmdline_commands[0]);
@@ -276,6 +280,7 @@ static void default_status(RASPISTILL_STATE *state)
    state->fullResPreview = 0;
    state->frameNextMethod = FRAME_NEXT_SINGLE;
    state->useGL = 0;
+   state->glCapture = 0;
 
    // Setup preview window defaults
    raspipreview_set_defaults(&state->preview_parameters);
@@ -437,7 +442,7 @@ static int parse_cmdline(int argc, const char **argv, RASPISTILL_STATE *state)
             state->filename = malloc(len + 10); // leave enough space for any timelapse generated changes to filename
             vcos_assert(state->filename);
             if (state->filename)
-               strncpy(state->filename, argv[i + 1], len);
+               strncpy(state->filename, argv[i + 1], len+1);
             i++;
          }
          else
@@ -453,7 +458,7 @@ static int parse_cmdline(int argc, const char **argv, RASPISTILL_STATE *state)
             state->linkname = malloc(len + 10);
             vcos_assert(state->linkname);
             if (state->linkname)
-               strncpy(state->linkname, argv[i + 1], len);
+               strncpy(state->linkname, argv[i + 1], len+1);
             i++;
          }
          else
@@ -584,6 +589,10 @@ static int parse_cmdline(int argc, const char **argv, RASPISTILL_STATE *state)
          state->useGL = 1;
          break;
 
+      case CommandGLCapture:
+         state->glCapture = 1;
+         break;
+
       default:
       {
          // Try parsing for any image specific parameters
@@ -619,12 +628,18 @@ static int parse_cmdline(int argc, const char **argv, RASPISTILL_STATE *state)
       state->raspitex_state.width   = state->preview_parameters.previewWindow.width;
       state->raspitex_state.height  = state->preview_parameters.previewWindow.height;
    }
-   state->raspitex_state.opacity = state->preview_parameters.opacity;
-   state->raspitex_state.verbose = state->verbose;
+   /* Also pass the preview information through so GL renderer can determine
+    * the real resolution of the multi-media image */
+   state->raspitex_state.preview_x       = state->preview_parameters.previewWindow.x;
+   state->raspitex_state.preview_y       = state->preview_parameters.previewWindow.y;
+   state->raspitex_state.preview_width   = state->preview_parameters.previewWindow.width;
+   state->raspitex_state.preview_height  = state->preview_parameters.previewWindow.height;
+   state->raspitex_state.opacity         = state->preview_parameters.opacity;
+   state->raspitex_state.verbose         = state->verbose;
 
    if (!valid)
    {
-      fprintf(stderr, "Invalid command line option (%s)\n", argv[i]);
+      fprintf(stderr, "Invalid command line option (%s)\n", argv[i-1]);
       return 1;
    }
 
@@ -801,8 +816,8 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
          .max_stills_h = state->height,
          .stills_yuv422 = 0,
          .one_shot_stills = 1,
-         .max_preview_video_w = state->preview_parameters.previewWindow.width,
-         .max_preview_video_h = state->preview_parameters.previewWindow.height,
+         .max_preview_video_w = VCOS_ALIGN_UP(FULL_FOV_PREVIEW_4x3_X, 32),
+         .max_preview_video_h = VCOS_ALIGN_UP(FULL_FOV_PREVIEW_4x3_Y, 16),
          .num_preview_video_frames = 3,
          .stills_capture_circular_buffer_height = 0,
          .fast_preview_resume = 0,
@@ -830,8 +845,8 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
    {
       // In this mode we are forcing the preview to be generated from the full capture resolution.
       // This runs at a max of 15fps with the OV5647 sensor.
-      format->es->video.width = state->width;
-      format->es->video.height = state->height;
+      format->es->video.width = VCOS_ALIGN_UP(state->width, 32);
+      format->es->video.height = VCOS_ALIGN_UP(state->height, 16);
       format->es->video.crop.x = 0;
       format->es->video.crop.y = 0;
       format->es->video.crop.width = state->width;
@@ -841,15 +856,15 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
    }
    else
    {
-      // use our normal preview mode - probably 1080p30
-      format->es->video.width = state->preview_parameters.previewWindow.width;
-      format->es->video.height = state->preview_parameters.previewWindow.height;
+      // Use a full FOV 4:3 mode
+      format->es->video.width = VCOS_ALIGN_UP(FULL_FOV_PREVIEW_4x3_X, 32);
+      format->es->video.height = VCOS_ALIGN_UP(FULL_FOV_PREVIEW_4x3_Y, 16);
       format->es->video.crop.x = 0;
       format->es->video.crop.y = 0;
-      format->es->video.crop.width = state->preview_parameters.previewWindow.width;
-      format->es->video.crop.height = state->preview_parameters.previewWindow.height;
-      format->es->video.frame_rate.num = PREVIEW_FRAME_RATE_NUM;
-      format->es->video.frame_rate.den = PREVIEW_FRAME_RATE_DEN;
+      format->es->video.crop.width = FULL_FOV_PREVIEW_4x3_X; // Changing these? Also change camera config max settings to match.
+      format->es->video.crop.height = FULL_FOV_PREVIEW_4x3_Y;
+      format->es->video.frame_rate.num = FULL_FOV_PREVIEW_FRAME_RATE_NUM;
+      format->es->video.frame_rate.den = FULL_FOV_PREVIEW_FRAME_RATE_DEN;
    }
 
    status = mmal_port_format_commit(preview_port);
@@ -877,8 +892,8 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
 
    // Set our stills format on the stills (for encoder) port
    format->encoding = MMAL_ENCODING_OPAQUE;
-   format->es->video.width = state->width;
-   format->es->video.height = state->height;
+   format->es->video.width = VCOS_ALIGN_UP(state->width, 32);
+   format->es->video.height = VCOS_ALIGN_UP(state->height, 16);
    format->es->video.crop.x = 0;
    format->es->video.crop.y = 0;
    format->es->video.crop.width = state->width;
@@ -1449,7 +1464,37 @@ static int wait_for_next_frame(RASPISTILL_STATE *state, int *frame)
    return keep_running;
 }
 
+static void rename_file(RASPISTILL_STATE *state, FILE *output_file,
+      const char *final_filename, const char *use_filename, int frame)
+{
+   MMAL_STATUS_T status;
 
+   fclose(output_file);
+   vcos_assert(use_filename != NULL && final_filename != NULL);
+   if (0 != rename(use_filename, final_filename))
+   {
+      vcos_log_error("Could not rename temp file to: %s; %s",
+            final_filename,strerror(errno));
+   }
+   if (state->linkname)
+   {
+      char *use_link;
+      char *final_link;
+      status = create_filenames(&final_link, &use_link, state->linkname, frame);
+
+      // Create hard link if possible, symlink otherwise
+      if (status != MMAL_SUCCESS
+            || (0 != link(final_filename, use_link)
+               &&  0 != symlink(final_filename, use_link))
+            || 0 != rename(use_link, final_link))
+      {
+         vcos_log_error("Could not link as filename: %s; %s",
+               state->linkname,strerror(errno));
+      }
+      if (use_link) free(use_link);
+      if (final_link) free(final_link);
+   }
+}
 
 /**
  * main
@@ -1649,7 +1694,15 @@ int main(int argc, const char **argv)
                }
 
                // We only capture if a filename was specified and it opened
-               if (output_file)
+               if (state.useGL && state.glCapture && output_file)
+               {
+                  /* Save the next GL framebuffer as the next camera still */
+                  int rc = raspitex_capture(&state.raspitex_state, output_file);
+                  if (rc != 0)
+                     vcos_log_error("Failed to capture GL preview");
+                  rename_file(&state, output_file, final_filename, use_filename, frame);
+               }
+               else if (output_file)
                {
                   int num, q;
 
@@ -1725,32 +1778,8 @@ int main(int argc, const char **argv)
 
                   if (output_file != stdout)
                   {
-                     fclose(output_file);
-                     vcos_assert(use_filename != NULL && final_filename != NULL);
-                     if (0 != rename(use_filename, final_filename))
-                     {
-                        vcos_log_error("Could not rename temp file to: %s; %s",
-                                          final_filename,strerror(errno));
-                     }
-                     if (state.linkname)
-                     {
-                        char *use_link;
-                        char *final_link;
-                        status = create_filenames(&final_link, &use_link, state.linkname, frame);
-
-                        // Create hard link if possible, symlink otherwise
-                        if (status != MMAL_SUCCESS
-                            || (0 != link(final_filename, use_link)
-                                &&  0 != symlink(final_filename, use_link))
-                            || 0 != rename(use_link, final_link))
-                        {
-                           vcos_log_error("Could not link as filename: %s; %s",
-                                          state.linkname,strerror(errno));
-                        }
-                        if (use_link) free(use_link);
-                        if (final_link) free(final_link);
-                     }
-                   }
+                     rename_file(&state, output_file, final_filename, use_filename, frame);
+                  }
                   // Disable encoder output port
                   status = mmal_port_disable(encoder_output_port);
                }

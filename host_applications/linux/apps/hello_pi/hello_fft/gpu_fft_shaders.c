@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2012, Broadcom Europe Ltd
+Copyright (c) 2013, Andrew Holme.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -25,44 +25,57 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "interface/khronos/common/khrn_int_common.h"
-#include "interface/khronos/include/EGL/egl.h"
-#include "interface/khronos/include/EGL/eglext.h"
-#include "middleware/khronos/egl/egl_server.h"
-#include "middleware/imageconv/imageconv.h"
-#include "vcinclude/vc_image_types.h"
+static unsigned int shader_256[] = {
+    #include "hex/shader_256.hex"
+};
+static unsigned int shader_512[] = {
+    #include "hex/shader_512.hex"
+};
+static unsigned int shader_1k[] = {
+    #include "hex/shader_1k.hex"
+};
+static unsigned int shader_2k[] = {
+    #include "hex/shader_2k.hex"
+};
+static unsigned int shader_4k[] = {
+    #include "hex/shader_4k.hex"
+};
+static unsigned int shader_8k[] = {
+    #include "hex/shader_8k.hex"
+};
+static unsigned int shader_16k[] = {
+    #include "hex/shader_16k.hex"
+};
+static unsigned int shader_32k[] = {
+    #include "hex/shader_32k.hex"
+};
+static unsigned int shader_64k[] = {
+    #include "hex/shader_64k.hex"
+};
+static unsigned int shader_128k[] = {
+    #include "hex/shader_128k.hex"
+};
 
+static struct {
+    unsigned int size, *code;
+}
+shaders[] = {
+    {sizeof(shader_256 ), shader_256 },
+    {sizeof(shader_512 ), shader_512 },
+    {sizeof(shader_1k  ), shader_1k  },
+    {sizeof(shader_2k  ), shader_2k  },
+    {sizeof(shader_4k  ), shader_4k  },
+    {sizeof(shader_8k  ), shader_8k  },
+    {sizeof(shader_16k ), shader_16k },
+    {sizeof(shader_32k ), shader_32k },
+    {sizeof(shader_64k ), shader_64k },
+    {sizeof(shader_128k), shader_128k}
+};
 
-typedef struct EGL_IMAGE_T {
-   uint64_t pid;
+unsigned int  gpu_fft_shader_size(int log2_N) {
+    return shaders[log2_N-8].size;
+}
 
-   /*
-    * Handle to a KHRN_IMAGE_T, whose format is required to be something
-    * suitable for texturing directly from. If NULL, then use external.convert
-    * below to make one (in glBindTexture_impl probably).
-    */
-   MEM_HANDLE_T mh_image;
-
-   bool flip_y;
-
-   /*
-    * Any kind of "external" image-- i.e. that can't be used directly for
-    * texturing.
-    */
-   struct
-   {
-      /*
-       * Handle to an object that convert knows how to convert into a
-       * KHRN_IMAGE_T suitable for texturing from, e.g. a multimedia image.
-       */
-      MEM_HANDLE_T src;
-      const IMAGE_CONVERT_CLASS_T *convert;
-      KHRN_IMAGE_FORMAT_T conv_khrn_format;
-      VC_IMAGE_TYPE_T conv_vc_format;
-      uint32_t src_updated;
-      uint32_t src_converted;
-   } external;
-
-} EGL_IMAGE_T;
-
-extern void egl_image_term(void *v, uint32_t size);
+unsigned int *gpu_fft_shader_code(int log2_N) {
+    return shaders[log2_N-8].code;
+}

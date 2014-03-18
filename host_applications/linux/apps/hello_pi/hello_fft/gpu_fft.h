@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2012, Broadcom Europe Ltd
+Copyright (c) 2013, Andrew Holme.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -25,44 +25,38 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "interface/khronos/common/khrn_int_common.h"
-#include "interface/khronos/include/EGL/egl.h"
-#include "interface/khronos/include/EGL/eglext.h"
-#include "middleware/khronos/egl/egl_server.h"
-#include "middleware/imageconv/imageconv.h"
-#include "vcinclude/vc_image_types.h"
+#define GPU_FFT_QPUS 8
 
+#define GPU_FFT_PI 3.14159265358979323846
 
-typedef struct EGL_IMAGE_T {
-   uint64_t pid;
+#define GPU_FFT_FWD 0 // forward FFT
+#define GPU_FFT_REV 1 // inverse FFT
 
-   /*
-    * Handle to a KHRN_IMAGE_T, whose format is required to be something
-    * suitable for texturing directly from. If NULL, then use external.convert
-    * below to make one (in glBindTexture_impl probably).
-    */
-   MEM_HANDLE_T mh_image;
+struct GPU_FFT_COMPLEX {
+    float re, im;
+};
 
-   bool flip_y;
+struct GPU_FFT {
+    struct GPU_FFT_COMPLEX *in, *out;
+    int mb, step;
+    unsigned timeout, noflush, handle, size, vc_msg;
+};
 
-   /*
-    * Any kind of "external" image-- i.e. that can't be used directly for
-    * texturing.
-    */
-   struct
-   {
-      /*
-       * Handle to an object that convert knows how to convert into a
-       * KHRN_IMAGE_T suitable for texturing from, e.g. a multimedia image.
-       */
-      MEM_HANDLE_T src;
-      const IMAGE_CONVERT_CLASS_T *convert;
-      KHRN_IMAGE_FORMAT_T conv_khrn_format;
-      VC_IMAGE_TYPE_T conv_vc_format;
-      uint32_t src_updated;
-      uint32_t src_converted;
-   } external;
+int gpu_fft_prepare(
+    int mb,         // mailbox file_desc
+    int log2_N,     // log2(FFT_length) = 8...17
+    int direction,  // GPU_FFT_FWD: fft(); GPU_FFT_REV: ifft()
+    int jobs,       // number of transforms in batch
+    struct GPU_FFT **fft);
 
-} EGL_IMAGE_T;
+unsigned gpu_fft_execute(
+    struct GPU_FFT *info);
 
-extern void egl_image_term(void *v, uint32_t size);
+void gpu_fft_release(
+    struct GPU_FFT *info);
+
+// private
+int           gpu_fft_twiddle_size(int, int *, int *, int *);
+void          gpu_fft_twiddle_data(int, int, float *);
+unsigned int  gpu_fft_shader_size(int);
+unsigned int *gpu_fft_shader_code(int);

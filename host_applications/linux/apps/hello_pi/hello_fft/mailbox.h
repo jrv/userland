@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2012, Broadcom Europe Ltd
+Copyright (c) 2012, Broadcom Europe Ltd.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -25,44 +25,23 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "interface/khronos/common/khrn_int_common.h"
-#include "interface/khronos/include/EGL/egl.h"
-#include "interface/khronos/include/EGL/eglext.h"
-#include "middleware/khronos/egl/egl_server.h"
-#include "middleware/imageconv/imageconv.h"
-#include "vcinclude/vc_image_types.h"
+#include <linux/ioctl.h>
 
+#define MAJOR_NUM 100
+#define IOCTL_MBOX_PROPERTY _IOWR(MAJOR_NUM, 0, char *)
+#define DEVICE_FILE_NAME "char_dev"
 
-typedef struct EGL_IMAGE_T {
-   uint64_t pid;
+int mbox_open();
+void mbox_close(int file_desc);
 
-   /*
-    * Handle to a KHRN_IMAGE_T, whose format is required to be something
-    * suitable for texturing directly from. If NULL, then use external.convert
-    * below to make one (in glBindTexture_impl probably).
-    */
-   MEM_HANDLE_T mh_image;
+unsigned get_version(int file_desc);
+unsigned mem_alloc(int file_desc, unsigned size, unsigned align, unsigned flags);
+unsigned mem_free(int file_desc, unsigned handle);
+unsigned mem_lock(int file_desc, unsigned handle);
+unsigned mem_unlock(int file_desc, unsigned handle);
+void *mapmem(unsigned base, unsigned size);
+void *unmapmem(void *addr, unsigned size);
 
-   bool flip_y;
-
-   /*
-    * Any kind of "external" image-- i.e. that can't be used directly for
-    * texturing.
-    */
-   struct
-   {
-      /*
-       * Handle to an object that convert knows how to convert into a
-       * KHRN_IMAGE_T suitable for texturing from, e.g. a multimedia image.
-       */
-      MEM_HANDLE_T src;
-      const IMAGE_CONVERT_CLASS_T *convert;
-      KHRN_IMAGE_FORMAT_T conv_khrn_format;
-      VC_IMAGE_TYPE_T conv_vc_format;
-      uint32_t src_updated;
-      uint32_t src_converted;
-   } external;
-
-} EGL_IMAGE_T;
-
-extern void egl_image_term(void *v, uint32_t size);
+unsigned execute_code(int file_desc, unsigned code, unsigned r0, unsigned r1, unsigned r2, unsigned r3, unsigned r4, unsigned r5);
+unsigned execute_qpu(int file_desc, unsigned num_qpus, unsigned control, unsigned noflush, unsigned timeout);
+unsigned qpu_enable(int file_desc, unsigned enable);

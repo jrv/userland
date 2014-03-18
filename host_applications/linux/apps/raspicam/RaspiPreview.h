@@ -31,12 +31,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /// Layer that preview window should be displayed on
 #define PREVIEW_LAYER      2
-#define PREVIEW_FRAME_RATE_NUM 30
+
+// Frames rates of 0 implies variable, but denominator needs to be 1 to prevent div by 0
+#define PREVIEW_FRAME_RATE_NUM 0
 #define PREVIEW_FRAME_RATE_DEN 1
 
-#define FULL_RES_PREVIEW_FRAME_RATE_NUM 15
+#define FULL_RES_PREVIEW_FRAME_RATE_NUM 0
 #define FULL_RES_PREVIEW_FRAME_RATE_DEN 1
 
+#define FULL_FOV_PREVIEW_16x9_X 1280
+#define FULL_FOV_PREVIEW_16x9_Y 720
+
+#define FULL_FOV_PREVIEW_4x3_X 1296
+#define FULL_FOV_PREVIEW_4x3_Y 972
+
+#define FULL_FOV_PREVIEW_FRAME_RATE_NUM 0
+#define FULL_FOV_PREVIEW_FRAME_RATE_DEN 1
 
 typedef struct
 {
