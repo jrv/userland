@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Usage information in README_RaspiMJPEG.md
  */
 
-#define VERSION "3.2"
+#define VERSION "3.3"
 
 #define RES_4_3 0
 #define RES_16_9_STD 1
@@ -280,7 +280,7 @@ void start_all (void) {
   format->es->video.crop.y = 0;
   format->es->video.crop.width = video_width;
   format->es->video.crop.height = video_height;
-  format->es->video.frame_rate.num = 30;
+  format->es->video.frame_rate.num = 0;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[0]);
   if(status != MMAL_SUCCESS) error("Coult not set preview format");
@@ -294,7 +294,7 @@ void start_all (void) {
   format->es->video.crop.y = 0;
   format->es->video.crop.width = video_width;
   format->es->video.crop.height = video_height;
-  format->es->video.frame_rate.num = 30;
+  format->es->video.frame_rate.num = 25;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[1]);
   if(status != MMAL_SUCCESS) error("Could not set video format");
@@ -309,7 +309,7 @@ void start_all (void) {
   format->es->video.crop.y = 0;
   format->es->video.crop.width = 2592;
   format->es->video.crop.height = 1944;
-  format->es->video.frame_rate.num = 30;
+  format->es->video.frame_rate.num = 0;
   format->es->video.frame_rate.den = 1;
   status = mmal_port_format_commit(camera->output[2]);
   if(status != MMAL_SUCCESS) error("Could not set still format");
@@ -734,7 +734,7 @@ int main (int argc, char* argv[]) {
                 else fprintf(status_file, "md_boxing");
                 fclose(status_file);
                 asprintf(&filename_temp, h264_filename, video_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
-                asprintf(&cmd_temp, "MP4Box -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
+                asprintf(&cmd_temp, "MP4Box -fps 25 -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
                 if(system(cmd_temp) == -1) error("Could not start MP4Box");
                 asprintf(&filename_temp2, "%s.h264", filename_temp);
                 remove(filename_temp2);
