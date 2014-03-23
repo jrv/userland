@@ -81,7 +81,7 @@ FILE *jpegoutput_file = NULL, *jpegoutput2_file = NULL, *h264output_file = NULL,
 MMAL_POOL_T *pool_jpegencoder, *pool_jpegencoder2, *pool_h264encoder;
 unsigned int tl_cnt=0, mjpeg_cnt=0, width=320, height=240, width_pic=320, height_pic=240, divider=5, image_cnt=0, image2_cnt=0, video_cnt=0;
 char *jpeg_filename = 0, *jpeg2_filename = 0, *h264_filename = 0, *pipe_filename = 0, *status_filename = 0;
-unsigned char timelapse=0, mp4box=0, running=1, autostart=1, quality=85, idle=0, capturing=0, motion_detection=0, preview_mode=RES_16_9_STD;
+unsigned char timelapse=0, mp4box=0, running=1, autostart=1, quality=85, idle=0, capturing=0, motion_detection=0, preview_mode=RES_16_9_STD, audio_mode=0;
 int time_between_pic;
 time_t currTime;
 struct tm *localTime;
@@ -600,6 +600,9 @@ int main (int argc, char* argv[]) {
     else if(strcmp(argv[i], "-fp") == 0) {
       preview_mode = RES_4_3;
     }
+    else if(strcmp(argv[i], "-audio") == 0) {
+      audio_mode = 1;
+    }
     else error("Invalid arguments");
   }
   if(!of_set) error("Output file not specified");
@@ -691,7 +694,14 @@ int main (int argc, char* argv[]) {
               }
               h264output_file = fopen(filename_temp2, "wb");
               free(filename_temp2);
-              if(mp4box) free(filename_temp);
+              if(mp4box) { 
+			if(audio_mode) {
+				asprintf(&cmd_temp, "/usr/bin/arecord -q -D hw:1,0 -f S16_LE -t raw | /usr/bin/lame -s 8 -m m  --signed -r - %s.mp3 -S &", filename_temp);
+				printf("Audio recording with \"%s\\n", cmd_temp);
+                		if(system(cmd_temp) == -1) error("Could not start audio recording");
+			}
+			free(filename_temp);
+	      }
               if(!h264output_file) error("Could not open/create video-file");
               status = mmal_port_enable(h264encoder->output[0], h264encoder_buffer_callback);
               if(status != MMAL_SUCCESS) error("Could not enable video port");
@@ -736,12 +746,24 @@ int main (int argc, char* argv[]) {
                 else fprintf(status_file, "md_boxing");
                 fclose(status_file);
                 asprintf(&filename_temp, h264_filename, video_cnt, localTime->tm_year+1900, localTime->tm_mon+1, localTime->tm_mday, localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
-                asprintf(&cmd_temp, "MP4Box -fps 25 -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
+		if(audio_mode) {
+                	asprintf(&cmd_temp, "/usr/bin/killall arecord > /dev/null");
+			if(system(cmd_temp) == -1) error("Could not stop audio recording");
+			free(cmd_temp);
+                	asprintf(&cmd_temp, "MP4Box -fps 25 -add %s.h264 -add %s.mp3 %s > /dev/null", filename_temp, filename_temp, filename_temp);
+		} else {
+			asprintf(&cmd_temp, "MP4Box -fps 25 -add %s.h264 %s > /dev/null", filename_temp, filename_temp);
+		}
                 if(system(cmd_temp) == -1) error("Could not start MP4Box");
                 asprintf(&filename_temp2, "%s.h264", filename_temp);
                 remove(filename_temp2);
-                free(filename_temp);
                 free(filename_temp2);
+		if (audio_mode) {
+                	asprintf(&filename_temp2, "%s.mp3", filename_temp);
+                	remove(filename_temp2);
+                	free(filename_temp2);
+		}
+                free(filename_temp);
                 free(cmd_temp);
                 printf("Boxing stopped\n");
               }
