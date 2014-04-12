@@ -696,7 +696,7 @@ int main (int argc, char* argv[]) {
               free(filename_temp2);
               if(mp4box) { 
 			if(audio_mode) {
-				asprintf(&cmd_temp, "/usr/bin/arecord -q -D hw:1,0 -f S16_LE -t raw | /usr/bin/lame -s 8 -m m  --signed -r - %s.mp3 -S &", filename_temp);
+				asprintf(&cmd_temp, "/usr/bin/arecord -q -D hw:1,0 -f S16_LE -t wav | /usr/bin/lame - %s.mp3 -S &", filename_temp);
 				printf("Audio recording with \"%s\\n", cmd_temp);
                 		if(system(cmd_temp) == -1) error("Could not start audio recording");
 			}
